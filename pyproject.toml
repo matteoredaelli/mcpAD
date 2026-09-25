@@ -1,0 +1,66 @@
+# Copyright 2026 Matteo Redaelli
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[project]
+name = "mcpad"
+version = "0.1.0"
+description = "A FastMCP server exposing the msad Active Directory / LDAP library"
+readme = "README.md"
+authors = [
+    { name = "Matteo Redaelli", email = "matteo.redaelli@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastmcp>=4.0.9",
+    "msad",
+]
+
+[project.scripts]
+mcpad = "mcpad:main"
+
+[tool.uv.sources]
+msad = { path = "/Users/redaema001/Downloads/github/msad", editable = true }
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16",
+    "pyrefly>=0.16",
+]
+
+[tool.ruff]
+target-version = "py314"
+src = ["src"]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "W",   # pycodestyle warnings
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pyrefly]
+project-includes = ["src"]
+python-version = "3.14"
+preset = "strict"
