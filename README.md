@@ -1,7 +1,7 @@
 # mcpAD
 
 A [FastMCP](https://gofastmcp.com) server that exposes the
-[`msad`](../msad) Active Directory / LDAP library as MCP tools.
+[`msad`](https://github.com/matteoredaelli/msad) Active Directory / LDAP library as MCP tools.
 
 Built with **Python 3.14** and **uv**. It reuses the typed, public `msad` API
 (search users/groups, memberships, account status). All tools are read-only.
@@ -16,6 +16,14 @@ Built with **Python 3.14** and **uv**. It reuses the typed, public `msad` API
 | `get_group` | Get a single group (exact match) |
 | `find_computers` | Find computers by name/dns/os (`*` wildcards) |
 | `get_computer` | Get a single computer (sAMAccountName/cn/dNSHostName) |
+| `find_ous` | Find organizational units by name (`*` wildcards) |
+| `get_ou` | Get a single OU by its `ou` name or full DN (exact match) |
+| `get_ou_contents` | List objects under an OU (optionally filtered by `object_class`) |
+| `find_inactive_users` | Find users whose last logon is older than `days` (default 90) |
+| `find_stale_computers` | Find computers whose last logon is older than `days` (default 90) |
+| `get_domain_info` | Domain object: security-relevant settings and metadata (audit) |
+| `get_password_policy` | Default domain password policy (audit) |
+| `get_privileged_groups` | Well-known privileged groups with member counts (audit) |
 | `get_by_dn` | Fetch any entry directly by its DN (resolve `manager` / `managedBy`) |
 | `group_members` | List group members (direct or `nested`) |
 | `user_groups` | List a user's groups (nested by default) |
@@ -23,12 +31,18 @@ Built with **Python 3.14** and **uv**. It reuses the typed, public `msad` API
 | `is_disabled` | Is an account disabled? |
 | `is_locked` | Is an account locked? |
 
+The `find_users`, `find_groups`, `find_computers` and `find_ous` tools accept an
+optional `base` (a DN, e.g. an OU) to restrict the search to that subtree
+instead of the whole domain.
+
 ### Returned attributes
 
-By default `get_user` / `find_users` return a useful attribute set that includes
-`manager` — the **distinguished name (DN)** of the user's manager, e.g.
-`CN=Anna Bianchi,OU=Staff,DC=group,DC=example,DC=com`. Group lookups include
-`managedBy`, the DN of the group's owner.
+By default `get_user` / `find_users` return a useful attribute set: identity
+fields plus `manager` — the **distinguished name (DN)** of the user's manager,
+e.g. `CN=Anna Bianchi,OU=Staff,DC=group,DC=example,DC=com` — as well as
+`memberOf` (direct group DNs), `userAccountControl`, `accountExpires`,
+`lastLogonTimestamp` and `whenCreated`. Group lookups include `managedBy` (the
+DN of the group's owner), `member`, `groupType` and `whenCreated`.
 
 To expand a manager (or any DN-valued field) into a full record, call
 `get_by_dn` with that DN. This is a direct, efficient lookup (the DN is used as
@@ -187,5 +201,6 @@ uv sync
 uv run python -c "import asyncio; from mcpad import mcp; print(asyncio.run(mcp.list_tools()))"
 ```
 
-The `msad` dependency is installed as an editable local path (`../msad`), so
+The [`msad`](https://github.com/matteoredaelli/msad) dependency can be installed
+from its Git repository, or as an editable local path during development so that
 library changes are picked up immediately.

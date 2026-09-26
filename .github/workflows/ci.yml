@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Kerberos development headers
+        # The msad dependency builds gssapi against the system krb5 libraries.
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --group dev --python ${{ matrix.python-version }}
+
+      - name: ruff check
+        run: make lint-check
+
+      - name: ruff format --check
+        run: make lint-format
+
+      - name: pyrefly (strict)
+        run: make typecheck
+
+  build:
+    name: Build distribution
+    needs: lint
+    # Only build when it's useful: on tag pushes (releases) or manual runs.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Kerberos development headers
+        # The msad dependency builds gssapi against the system krb5 libraries.
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Build wheel and sdist
+        run: make build
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    # Publish only on version tags.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/mcpad/
+    # Trusted Publishing (OIDC): no API token/secret needed. Configure the
+    # publisher on PyPI: project settings -> Publishing -> add this repo +
+    # workflow (ci.yml) + environment (pypi).
+    permissions:
+      id-token: write
+    steps:
+      - name: Download built distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Publish
+        run: uv publish dist/*

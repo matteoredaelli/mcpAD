@@ -8,6 +8,9 @@
 #   make start-stdio              run over stdio (for MCP clients)
 #   make start-http               run over streamable-http on HOST:PORT
 #   make start-sse                run over sse on HOST:PORT
+#   make build                    build wheel and sdist into dist/
+#   make publish                  upload to PyPI (needs credentials)
+#   make clean                    remove build artifacts and caches
 #
 # Override transport/host/port, e.g.:
 #   make start TRANSPORT=streamable-http PORT=9000
@@ -25,7 +28,7 @@ START_ENV := MCP_TRANSPORT=$(TRANSPORT) MCP_HOST=$(HOST) MCP_PORT=$(PORT)
 
 .DEFAULT_GOAL := help
 .PHONY: help sync lint lint-check lint-format typecheck format \
-        start start-stdio start-http start-sse
+        start start-stdio start-http start-sse build publish clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -60,3 +63,13 @@ start-http: ## Run over streamable-http on HOST:PORT
 
 start-sse: ## Run over sse on HOST:PORT
 	$(MAKE) start TRANSPORT=sse
+
+build: ## Build wheel and sdist into dist/
+	uv build
+
+publish: ## Upload to PyPI (needs credentials or Trusted Publishing in CI)
+	uv publish dist/*
+
+clean: ## Remove build artifacts and caches
+	rm -rf dist build *.egg-info .ruff_cache .pytest_cache
+	find . -type d -name __pycache__ -prune -exec rm -rf {} +

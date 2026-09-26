@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Assistant/editor local config
+.kiro/

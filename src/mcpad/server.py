@@ -70,7 +70,7 @@ class _Session:
 
     @property
     def base(self) -> str:
-        return self.config.search_base
+        return self.config.base
 
 
 @mcp.tool
@@ -80,14 +80,18 @@ def find_users(
     mail: str | None = None,
     sam: str | None = None,
     department: str | None = None,
+    base: str | None = None,
     limit: int = 100,
     domain: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Find AD users by field. Criteria are ANDed; values may contain * wildcards."""
+    """Find AD users by field. Criteria are ANDed; values may contain * wildcards.
+
+    Pass `base` (a DN, e.g. an OU) to restrict the search to a subtree.
+    """
     s = _Session(domain)
     result = msad.find_users(
         s.conn,
-        s.base,
+        base or s.base,
         name=name,
         surname=surname,
         mail=mail,
@@ -106,10 +110,15 @@ def get_user(identifier: str, domain: str | None = None) -> dict[str, Any] | Non
 
 
 @mcp.tool
-def find_groups(string: str, limit: int = 100, domain: str | None = None) -> list[dict[str, Any]]:
-    """Find AD groups by cn/name/sAMAccountName/displayName (supports * wildcards)."""
+def find_groups(
+    string: str, base: str | None = None, limit: int = 100, domain: str | None = None
+) -> list[dict[str, Any]]:
+    """Find AD groups by cn/name/sAMAccountName/displayName (supports * wildcards).
+
+    Pass `base` (a DN, e.g. an OU) to restrict the search to a subtree.
+    """
     s = _Session(domain)
-    return _jsonable(msad.find_groups(s.conn, s.base, string, limit=limit))
+    return _jsonable(msad.find_groups(s.conn, base or s.base, string, limit=limit))
 
 
 @mcp.tool
@@ -136,16 +145,18 @@ def find_computers(
     name: str | None = None,
     dns: str | None = None,
     os: str | None = None,
+    base: str | None = None,
     limit: int = 100,
     domain: str | None = None,
 ) -> list[dict[str, Any]]:
     """Find AD computers by cn (name), dNSHostName (dns) or operatingSystem (os).
 
-    Criteria are ANDed; values may contain * wildcards.
+    Criteria are ANDed; values may contain * wildcards. Pass `base` (a DN, e.g.
+    an OU) to restrict the search to a subtree.
     """
     s = _Session(domain)
     return _jsonable(
-        msad.find_computers(s.conn, s.base, name=name, dns=dns, os=os, limit=limit)
+        msad.find_computers(s.conn, base or s.base, name=name, dns=dns, os=os, limit=limit)
     )
 
 
@@ -154,6 +165,121 @@ def get_computer(identifier: str, domain: str | None = None) -> dict[str, Any] |
     """Get a single AD computer by sAMAccountName, cn or dNSHostName (exact match)."""
     s = _Session(domain)
     return _jsonable(msad.get_computer(s.conn, s.base, identifier))
+
+
+@mcp.tool
+def find_ous(
+    name: str | None = None,
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find AD organizational units (OUs) by name (matches `ou`; may contain *).
+
+    Pass `base` (a DN) to search under a specific parent OU instead of the
+    whole domain.
+    """
+    s = _Session(domain)
+    return _jsonable(msad.find_ous(s.conn, base or s.base, name=name, limit=limit))
+
+
+@mcp.tool
+def get_ou(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
+    """Get a single AD organizational unit by its `ou` name or full DN (exact)."""
+    s = _Session(domain)
+    return _jsonable(msad.get_ou(s.conn, s.base, identifier))
+
+
+@mcp.tool
+def get_ou_contents(
+    ou_dn: str,
+    object_class: str | None = None,
+    limit: int = 1000,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the objects contained under an OU (given its DN).
+
+    Optionally restrict to a single `object_class` (e.g. user, group, computer,
+    organizationalUnit). Returns an empty list if the OU DN does not exist.
+    """
+    s = _Session(domain)
+    return _jsonable(msad.get_ou_contents(s.conn, ou_dn, object_class=object_class, limit=limit))
+
+
+@mcp.tool
+def find_inactive_users(
+    days: int = 90,
+    base: str | None = None,
+    include_never: bool = False,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find users whose last logon is older than `days` (default 90).
+
+    Matches `lastLogonTimestamp` at or before the cutoff. Set
+    `include_never=True` to also return users that never logged on. Pass
+    `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _jsonable(
+        msad.find_inactive_users(
+            s.conn, base or s.base, days=days, include_never=include_never, limit=limit
+        )
+    )
+
+
+@mcp.tool
+def find_stale_computers(
+    days: int = 90,
+    base: str | None = None,
+    include_never: bool = False,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find computers whose last logon is older than `days` (default 90).
+
+    Matches `lastLogonTimestamp` at or before the cutoff. Set
+    `include_never=True` to also return computers that never logged on. Pass
+    `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _jsonable(
+        msad.find_stale_computers(
+            s.conn, base or s.base, days=days, include_never=include_never, limit=limit
+        )
+    )
+
+
+@mcp.tool
+def get_domain_info(domain: str | None = None) -> dict[str, Any] | None:
+    """Read the domain object: security-relevant settings and metadata (audit)."""
+    s = _Session(domain)
+    return _jsonable(msad.get_domain_info(s.conn, s.base))
+
+
+@mcp.tool
+def get_password_policy(domain: str | None = None) -> dict[str, Any] | None:
+    """Read the default domain password policy (maxPwdAge, minPwdLength, ...)."""
+    s = _Session(domain)
+    return _jsonable(msad.get_password_policy(s.conn, s.base))
+
+
+@mcp.tool
+def get_privileged_groups(
+    with_members: bool = False,
+    nested: bool = False,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Report on well-known privileged groups (Domain Admins, ...) with counts.
+
+    Each entry includes the group's attributes plus `member_count`. Set
+    `with_members=True` to include a `members` list (use `nested=True` to
+    expand nested membership).
+    """
+    s = _Session(domain)
+    return _jsonable(
+        msad.get_privileged_groups(s.conn, s.base, with_members=with_members, nested=nested)
+    )
 
 
 @mcp.tool
