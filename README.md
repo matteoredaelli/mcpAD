@@ -23,6 +23,7 @@ Built with **Python 3.14** and **uv**. It reuses the typed, public `msad` API
 | `find_stale_computers` | Find computers whose last logon is older than `days` (default 90) |
 | `get_domain_info` | Domain object: security-relevant settings and metadata (audit) |
 | `get_password_policy` | Default domain password policy (audit) |
+| `get_password_policy_violations` | Users whose password violates the policy (audit) |
 | `get_privileged_groups` | Well-known privileged groups with member counts (audit) |
 | `get_by_dn` | Fetch any entry directly by its DN (resolve `manager` / `managedBy`) |
 | `group_members` | List group members (direct or `nested`) |
@@ -30,6 +31,8 @@ Built with **Python 3.14** and **uv**. It reuses the typed, public `msad` API
 | `is_member` | Is a user a (nested) member of a group? |
 | `is_disabled` | Is an account disabled? |
 | `is_locked` | Is an account locked? |
+| `test_connection` | Test AD connectivity and bind (returns ok/target/auth/error) |
+| `health` | Server health check (server name, msad version, connectivity) |
 
 The `find_users`, `find_groups`, `find_computers` and `find_ous` tools accept an
 optional `base` (a DN, e.g. an OU) to restrict the search to that subtree
@@ -63,15 +66,26 @@ domain = "group"              # used when a tool call omits `domain`
 
 [domains.group]
 host = "dc.example.com"       # hostname only (no scheme, no :port)
-search_base = "dc=group,dc=example,dc=com"
+base = "dc=group,dc=example,dc=com"
 port = 636                    # default: 389
 use_ssl = true                # default: false  (true = LDAPS)
 # user = "svc_account"        # optional (see auth below)
 # password = "..."            # optional
+
+# A second domain (here using user/password auth):
+[domains.lab]
+host = "dc.lab.example.com"
+base = "dc=lab,dc=example,dc=com"
+port = 636
+use_ssl = true
+user = "svc_reader"
+password = "s3cr3t"
 ```
 
 You can declare several `[domains.<name>]` blocks and pick one per call with the
-tool's `domain` argument, or globally via `MSAD_DOMAIN`.
+tool's `domain` argument, or globally via `MSAD_DOMAIN`. For example, an agent
+can call `find_users(surname="Rossi", domain="lab")` to target the `lab` domain
+while `[defaults].domain` stays `group`.
 
 ### Overrides via environment
 

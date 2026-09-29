@@ -40,7 +40,8 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=4.0.9",
-    "msad>=0.5.0",
+    #"msad>=0.5.0",
+    "msad @ git+https://github.com/matteoredaelli/msad.git"
 ]
 
 [project.urls]
@@ -54,7 +55,7 @@ mcpad = "mcpad:main"
 [tool.uv.sources]
 # Development-only override: use the local msad checkout. This is NOT included
 # in the published package; installers resolve `msad>=0.5.0` from the index.
-msad = { path = "/Users/redaema001/Downloads/github/msad", editable = true }
+# msad = { path = "/tmp/Downloads/github/msad", editable = true }
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]

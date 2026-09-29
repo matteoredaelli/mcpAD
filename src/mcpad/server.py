@@ -1,16 +1,19 @@
 # Copyright 2026 Matteo Redaelli
+# mcpAD - MCP server for Active Directory / LDAP (built on msad)
+# Copyright (C) 2026 - matteo.redaelli@gmail.com
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """FastMCP server exposing the msad Active Directory / LDAP library as MCP tools.
 
@@ -71,6 +74,34 @@ class _Session:
     @property
     def base(self) -> str:
         return self.config.base
+
+
+@mcp.tool
+def test_connection(domain: str | None = None) -> dict[str, Any]:
+    """Test connectivity and bind to the AD server without raising.
+
+    Returns a status dict with `ok`, `target`, `auth` and `error`. Use this to
+    verify the configuration and reachability before running other tools.
+    """
+    config = msad.load_domain_config(domain or _DEFAULT_DOMAIN, _CONFIG_FILE)
+    return _jsonable(msad.check_connection(config))
+
+
+@mcp.tool
+def health(domain: str | None = None) -> dict[str, Any]:
+    """Server health check: reports server name, msad version and AD connectivity."""
+    result: dict[str, Any] = {
+        "server": mcp.name,
+        "msad_version": msad.__version__,
+    }
+    try:
+        config = msad.load_domain_config(domain or _DEFAULT_DOMAIN, _CONFIG_FILE)
+        result["connection"] = _jsonable(msad.check_connection(config))
+    except MsadError as exc:
+        # Config could not be loaded (missing file, unknown domain, ...).
+        result["connection"] = {"ok": False, "error": str(exc)}
+    result["ok"] = bool(result["connection"].get("ok"))
+    return result
 
 
 @mcp.tool
@@ -262,6 +293,28 @@ def get_password_policy(domain: str | None = None) -> dict[str, Any] | None:
     """Read the default domain password policy (maxPwdAge, minPwdLength, ...)."""
     s = _Session(domain)
     return _jsonable(msad.get_password_policy(s.conn, s.base))
+
+
+@mcp.tool
+def get_password_policy_violations(
+    include_never_set: bool = True,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find users whose password violates the domain policy (audit).
+
+    Flags enabled users whose password has expired (older than the domain
+    `maxPwdAge`) and, when `include_never_set` is True, users who must set a
+    password at next logon (`pwdLastSet=0`). Accounts whose password never
+    expires are excluded. Returns an empty list if the domain has no maximum
+    password age.
+    """
+    s = _Session(domain)
+    return _jsonable(
+        msad.get_password_policy_violations(
+            s.conn, s.base, include_never_set=include_never_set, limit=limit
+        )
+    )
 
 
 @mcp.tool
