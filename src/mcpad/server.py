@@ -30,8 +30,13 @@ Run it with:
 from __future__ import annotations
 
 import datetime
+import functools
+import json
+import logging
 import os
 import re
+import time
+from collections.abc import Callable
 from typing import Any
 
 import msad
@@ -176,7 +181,118 @@ class _Session:
         return self.config.base
 
 
-@mcp.tool
+# --- Audit logging ---------------------------------------------------------
+#
+# When MCPAD_AUDIT_LOG points to a file, every tool call is appended to it as
+# one JSON object per line (JSON-lines): timestamp, tool name, (redacted)
+# arguments, status, duration and any error. This is opt-in and off by default.
+
+_AUDIT_LOG_PATH = os.environ.get("MCPAD_AUDIT_LOG") or None
+
+#: Argument names whose values must never be written to the audit log.
+_AUDIT_REDACT_KEYS = {
+    "password",
+    "new_password",
+    "old_password",
+    "pass",
+    "pwd",
+    "secret",
+    "token",
+}
+
+_audit_logger: logging.Logger | None = None
+
+
+def _get_audit_logger() -> logging.Logger | None:
+    """Return a file logger for the audit trail, or None when disabled."""
+    global _audit_logger
+    if not _AUDIT_LOG_PATH:
+        return None
+    if _audit_logger is not None:
+        return _audit_logger
+
+    logger = logging.getLogger("mcpad.audit")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        try:
+            directory = os.path.dirname(_AUDIT_LOG_PATH)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            handler: logging.Handler = logging.FileHandler(_AUDIT_LOG_PATH, encoding="utf-8")
+        except OSError as exc:
+            # Never let an unwritable audit path break tool execution.
+            logging.getLogger(__name__).warning(
+                "mcpAD audit log disabled: cannot open %r (%s)", _AUDIT_LOG_PATH, exc
+            )
+            return None
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(handler)
+    _audit_logger = logger
+    return logger
+
+
+def _redact(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of kwargs with sensitive values masked."""
+    redacted: dict[str, Any] = {}
+    for key, value in kwargs.items():
+        if key.lower() in _AUDIT_REDACT_KEYS:
+            redacted[key] = "***REDACTED***"
+        else:
+            redacted[key] = value
+    return redacted
+
+
+def _write_audit(entry: dict[str, Any]) -> None:
+    """Append one audit entry as a JSON line, swallowing any logging error."""
+    logger = _get_audit_logger()
+    if logger is None:
+        return
+    try:
+        logger.info(json.dumps(entry, default=str, ensure_ascii=False))
+    except (TypeError, ValueError):
+        logging.getLogger(__name__).debug("failed to serialize audit entry", exc_info=True)
+
+
+def _audited(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a tool function so each call is recorded to the audit log (if enabled)."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        if not _AUDIT_LOG_PATH:
+            return fn(*args, **kwargs)
+        start = time.monotonic()
+        entry: dict[str, Any] = {
+            "ts": datetime.datetime.now(datetime.UTC).isoformat(),
+            "tool": fn.__name__,
+            "params": _redact(kwargs),
+        }
+        try:
+            result = fn(*args, **kwargs)
+        except Exception as exc:
+            entry["status"] = "error"
+            entry["error"] = f"{type(exc).__name__}: {exc}"
+            entry["duration_ms"] = round((time.monotonic() - start) * 1000, 1)
+            _write_audit(entry)
+            raise
+        entry["status"] = "ok"
+        entry["duration_ms"] = round((time.monotonic() - start) * 1000, 1)
+        _write_audit(entry)
+        return result
+
+    return wrapper
+
+
+def tool(fn: Callable[..., Any]) -> Any:
+    """Register `fn` as an MCP tool, wrapped with audit logging.
+
+    Drop-in replacement for the bare ``@mcp.tool`` decorator used throughout
+    this module, so every tool is covered by the audit trail automatically.
+    """
+    return mcp.tool(_audited(fn))
+
+
+@tool
 def test_connection(domain: str | None = None) -> dict[str, Any]:
     """Test connectivity and bind to the AD server without raising.
 
@@ -187,7 +303,7 @@ def test_connection(domain: str | None = None) -> dict[str, Any]:
     return _jsonable(msad.check_connection(config))
 
 
-@mcp.tool
+@tool
 def health(domain: str | None = None) -> dict[str, Any]:
     """Server health check: reports server name, msad version and AD connectivity."""
     result: dict[str, Any] = {
@@ -204,7 +320,7 @@ def health(domain: str | None = None) -> dict[str, Any]:
     return result
 
 
-@mcp.tool
+@tool
 def find_users(
     name: str | None = None,
     surname: str | None = None,
@@ -233,14 +349,14 @@ def find_users(
     return _jsonable(result)
 
 
-@mcp.tool
+@tool
 def get_user(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD user by sAMAccountName, UPN, mail or cn (exact match)."""
     s = _Session(domain)
     return _jsonable(msad.get_user(s.conn, s.base, identifier))
 
 
-@mcp.tool
+@tool
 def find_groups(
     string: str, base: str | None = None, limit: int = 100, domain: str | None = None
 ) -> list[dict[str, Any]]:
@@ -252,14 +368,14 @@ def find_groups(
     return _jsonable(msad.find_groups(s.conn, base or s.base, string, limit=limit))
 
 
-@mcp.tool
+@tool
 def get_group(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD group by sAMAccountName or cn (exact match)."""
     s = _Session(domain)
     return _jsonable(msad.get_group(s.conn, s.base, identifier))
 
 
-@mcp.tool
+@tool
 def get_by_dn(dn: str, domain: str | None = None) -> dict[str, Any] | None:
     """Fetch any AD entry directly by its distinguished name (DN).
 
@@ -271,7 +387,7 @@ def get_by_dn(dn: str, domain: str | None = None) -> dict[str, Any] | None:
     return _jsonable(msad.get_by_dn(s.conn, dn))
 
 
-@mcp.tool
+@tool
 def find_computers(
     name: str | None = None,
     dns: str | None = None,
@@ -291,14 +407,14 @@ def find_computers(
     )
 
 
-@mcp.tool
+@tool
 def get_computer(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD computer by sAMAccountName, cn or dNSHostName (exact match)."""
     s = _Session(domain)
     return _jsonable(msad.get_computer(s.conn, s.base, identifier))
 
 
-@mcp.tool
+@tool
 def find_ous(
     name: str | None = None,
     base: str | None = None,
@@ -314,14 +430,14 @@ def find_ous(
     return _jsonable(msad.find_ous(s.conn, base or s.base, name=name, limit=limit))
 
 
-@mcp.tool
+@tool
 def get_ou(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD organizational unit by its `ou` name or full DN (exact)."""
     s = _Session(domain)
     return _jsonable(msad.get_ou(s.conn, s.base, identifier))
 
 
-@mcp.tool
+@tool
 def get_ou_contents(
     ou_dn: str,
     object_class: str | None = None,
@@ -337,7 +453,7 @@ def get_ou_contents(
     return _jsonable(msad.get_ou_contents(s.conn, ou_dn, object_class=object_class, limit=limit))
 
 
-@mcp.tool
+@tool
 def find_inactive_users(
     days: int = 90,
     base: str | None = None,
@@ -359,7 +475,7 @@ def find_inactive_users(
     )
 
 
-@mcp.tool
+@tool
 def find_stale_computers(
     days: int = 90,
     base: str | None = None,
@@ -381,21 +497,21 @@ def find_stale_computers(
     )
 
 
-@mcp.tool
+@tool
 def get_domain_info(domain: str | None = None) -> dict[str, Any] | None:
     """Read the domain object: security-relevant settings and metadata (audit)."""
     s = _Session(domain)
     return _jsonable(msad.get_domain_info(s.conn, s.base))
 
 
-@mcp.tool
+@tool
 def get_password_policy(domain: str | None = None) -> dict[str, Any] | None:
     """Read the default domain password policy (maxPwdAge, minPwdLength, ...)."""
     s = _Session(domain)
     return _jsonable(msad.get_password_policy(s.conn, s.base))
 
 
-@mcp.tool
+@tool
 def get_password_policy_violations(
     include_never_set: bool = True,
     limit: int = 100,
@@ -417,7 +533,7 @@ def get_password_policy_violations(
     )
 
 
-@mcp.tool
+@tool
 def get_privileged_groups(
     with_members: bool = False,
     nested: bool = False,
@@ -435,7 +551,7 @@ def get_privileged_groups(
     )
 
 
-@mcp.tool
+@tool
 def group_members(
     group: str, nested: bool = False, limit: int = 1000, domain: str | None = None
 ) -> list[dict[str, Any]]:
@@ -444,7 +560,7 @@ def group_members(
     return _jsonable(msad.group_members(s.conn, s.base, group, nested=nested, limit=limit))
 
 
-@mcp.tool
+@tool
 def user_groups(
     user: str, nested: bool = True, limit: int = 1000, domain: str | None = None
 ) -> list[dict[str, Any]] | None:
@@ -453,28 +569,28 @@ def user_groups(
     return _jsonable(msad.user_groups(s.conn, s.base, limit, user, nested=nested))
 
 
-@mcp.tool
+@tool
 def is_member(group: str, user: str, domain: str | None = None) -> bool:
     """Return True if the user is a (nested) member of the group."""
     s = _Session(domain)
     return msad.is_member(s.conn, s.base, group, user)
 
 
-@mcp.tool
+@tool
 def is_disabled(user: str, domain: str | None = None) -> bool | None:
     """Return True if the account is disabled, None if the user is not found."""
     s = _Session(domain)
     return msad.is_disabled(s.conn, s.base, user)
 
 
-@mcp.tool
+@tool
 def is_locked(user: str, domain: str | None = None) -> bool | None:
     """Return True if the account is locked, None if the user is not found."""
     s = _Session(domain)
     return msad.is_locked(s.conn, s.base, user)
 
 
-@mcp.tool
+@tool
 def disabled_users(
     base: str | None = None,
     extra_filter: str = "",
@@ -493,7 +609,7 @@ def disabled_users(
     )
 
 
-@mcp.tool
+@tool
 def locked_users(
     base: str | None = None,
     extra_filter: str = "",
@@ -512,7 +628,7 @@ def locked_users(
     )
 
 
-@mcp.tool
+@tool
 def never_expires_password(
     base: str | None = None,
     extra_filter: str = "",
@@ -530,7 +646,7 @@ def never_expires_password(
     )
 
 
-@mcp.tool
+@tool
 def get_dn(entry: str, base: str | None = None, domain: str | None = None) -> str | None:
     """Resolve a sAMAccountName (or DN) to a distinguished name (DN).
 
@@ -542,7 +658,7 @@ def get_dn(entry: str, base: str | None = None, domain: str | None = None) -> st
     return msad.get_dn(s.conn, base or s.base, entry)
 
 
-@mcp.tool
+@tool
 def audit_admin_accounts(
     nested: bool = True,
     domain: str | None = None,
@@ -558,7 +674,7 @@ def audit_admin_accounts(
     return _jsonable(msad.get_privileged_groups(s.conn, s.base, with_members=True, nested=nested))
 
 
-@mcp.tool
+@tool
 def search_ldap(
     search_filter: str,
     base: str | None = None,
@@ -617,7 +733,7 @@ if _ALLOW_WRITE:
                 f"with MCPAD_DISABLE_GUARDRAILS=1."
             )
 
-    @mcp.tool
+    @tool
     def add_group_member(
         group: str, user: str, confirm: bool = False, domain: str | None = None
     ) -> dict[str, Any]:
@@ -661,7 +777,7 @@ if _ALLOW_WRITE:
             "result": _jsonable(result),
         }
 
-    @mcp.tool
+    @tool
     def remove_group_member(
         group: str, user: str, confirm: bool = False, domain: str | None = None
     ) -> dict[str, Any]:
@@ -701,6 +817,54 @@ if _ALLOW_WRITE:
             "ok": bool(result),
             "action": "remove_group_member",
             "group": group,
+            "user": user,
+            "result": _jsonable(result),
+        }
+
+    @tool
+    def unlock_account(
+        user: str, confirm: bool = False, domain: str | None = None
+    ) -> dict[str, Any]:
+        """Unlock a locked-out user account (sets lockoutTime=0). WRITE operation.
+
+        Only available when MCPAD_ALLOW_WRITE is enabled. Two-phase: the first
+        call (``confirm=False``) returns a preview with
+        ``status="confirmation_required"`` and makes NO change; call again with
+        ``confirm=True`` — only after explicit human approval — to apply it.
+
+        Guard-rails refuse unlocking a protected account (administrative /
+        service / machine) regardless of ``confirm``. Raises if the user cannot
+        be resolved. Use `locked_users` to find locked accounts first.
+        """
+        if _GUARDRAILS_ENABLED and _is_protected_account(user):
+            return {
+                "status": "error",
+                "ok": False,
+                "message": (
+                    f"Account '{user}' is protected (administrative or service/machine "
+                    f"account) and cannot be unlocked. Override via "
+                    f"MCPAD_PROTECTED_ACCOUNTS or disable with MCPAD_DISABLE_GUARDRAILS=1."
+                ),
+            }
+
+        if not confirm:
+            return {
+                "status": "confirmation_required",
+                "ok": False,
+                "action": "unlock_account",
+                "user": user,
+                "message": (
+                    f"Would unlock account '{user}' (reset lockoutTime to 0). Re-call "
+                    f"with confirm=true to apply — only after explicit human approval."
+                ),
+            }
+
+        s = _Session(domain)
+        result = msad.unlock_user(s.conn, s.base, user)
+        return {
+            "status": "success",
+            "ok": bool(result),
+            "action": "unlock_account",
             "user": user,
             "result": _jsonable(result),
         }

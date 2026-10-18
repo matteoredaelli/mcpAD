@@ -71,6 +71,7 @@ only when the `MCPAD_ALLOW_WRITE` environment variable is set to a truthy value
 |---|---|
 | `add_group_member` | Add a user to a group (both as sAMAccountName or DN) |
 | `remove_group_member` | Remove a user from a group (both as sAMAccountName or DN) |
+| `unlock_account` | Unlock a locked-out user account (resets `lockoutTime` to 0) |
 
 ```bash
 MCPAD_ALLOW_WRITE=1 uv run mcpad      # write tools registered
@@ -84,7 +85,7 @@ invoke them.
 
 #### Two-phase confirmation
 
-Both write tools are **two-phase**. The first call (`confirm=false`, the
+All write tools are **two-phase**. The first call (`confirm=false`, the
 default) makes no change and returns a preview:
 
 ```json
@@ -115,6 +116,36 @@ full DN. Extend or tune via environment variables:
 | `MCPAD_PROTECTED_ACCOUNTS` | Comma-separated extra account names to protect |
 | `MCPAD_PROTECTED_GROUPS` | Comma-separated extra group names to protect |
 | `MCPAD_DISABLE_GUARDRAILS` | Set truthy to turn the checks off (not recommended) |
+
+## Audit logging
+
+Set `MCPAD_AUDIT_LOG` to a file path to record **every tool call** (read-only
+and write alike) as one JSON object per line (JSON-lines). Logging is off by
+default.
+
+```bash
+MCPAD_AUDIT_LOG=/var/log/mcpad/audit.log uv run mcpad
+```
+
+Each entry carries the UTC timestamp, the tool name, the (redacted) arguments,
+the status, the duration, and — on failure — the error:
+
+```json
+{"ts": "2026-10-18T20:09:34.029995+00:00", "tool": "add_group_member",
+ "params": {"group": "Sales", "user": "jdoe", "confirm": true},
+ "status": "ok", "duration_ms": 12.4}
+```
+
+Notes:
+
+- Sensitive argument values (`password`, `new_password`, `old_password`,
+  `token`, ...) are replaced with `***REDACTED***`.
+- `status` is `ok` when the tool call returned normally and `error` when it
+  raised; a two-phase preview or a guard-rail refusal returns normally, so it
+  is logged as `ok` — the business outcome is in the tool's returned payload.
+- The parent directory is created if needed; if the path cannot be opened the
+  server logs a warning and continues **without** audit logging (tool calls are
+  never blocked by an unwritable log).
 
 ## Prompts
 
