@@ -1,10 +1,10 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "(python_full_version < '3.14' and sys_platform != 'emscripten') or (python_full_version < '3.12' and sys_platform == 'emscripten')",
 ]
 
@@ -745,7 +745,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=4.0.9" },
-    { name = "msad", editable = "/Users/redaema001/Downloads/github/msad" },
+    { name = "msad", specifier = ">=0.6.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -774,7 +774,8 @@ wheels = [
 
 [[package]]
 name = "msad"
-source = { editable = "/Users/redaema001/Downloads/github/msad" }
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "gssapi" },
@@ -782,22 +783,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "typer" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "cryptography", specifier = "==50.0.1" },
-    { name = "gssapi", specifier = "==1.12.0" },
-    { name = "ldap3", specifier = "==2.9.1" },
-    { name = "pydantic", specifier = ">=2.9" },
-    { name = "typer", specifier = "==0.27.2" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pyrefly", specifier = ">=0.16" },
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "ruff", specifier = ">=0.16" },
+sdist = { url = "https://files.pythonhosted.org/packages/32/21/aa0b435eaeeb0f0b0cf58d1d9163d133d3ec5b859c1a54db6cd961a5fd15/msad-0.6.0.tar.gz", hash = "sha256:d5fc73af1fb43cc164f5924aa8e30dbb7236d4e739118ea7a5b2c4ceb4aeb86e", size = 93249, upload-time = "2026-10-17T22:03:57.562Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/0e/79f2cfd7aa9e401b2aef7cc4b6cd07a5536d91e8e53bb847ebc7c5522073/msad-0.6.0-py3-none-any.whl", hash = "sha256:3f40ab8ffe10508e8c2ffb7b8f77c02369eb0168c0f7c4b793f02475fec991c3", size = 40679, upload-time = "2026-10-17T22:03:56.626Z" },
 ]
 
 [[package]]

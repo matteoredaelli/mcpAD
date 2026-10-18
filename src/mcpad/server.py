@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 from typing import Any
 
 import msad
@@ -41,14 +42,113 @@ mcp: FastMCP = FastMCP(
     name="mcpAD",
     instructions=(
         "Query Active Directory / LDAP via the msad library: search users and "
-        "groups, inspect memberships, and check account status. All tools are "
-        "read-only."
+        "groups, inspect memberships, check account status and run read-only "
+        "security audits. Write tools (group membership changes) are disabled "
+        "by default and only registered when MCPAD_ALLOW_WRITE is enabled."
     ),
 )
 
 # Default domain / config file can be overridden per environment.
 _DEFAULT_DOMAIN = os.environ.get("MSAD_DOMAIN") or None
 _CONFIG_FILE = os.environ.get("MSAD_CONFIG_FILE") or None
+
+
+def _env_flag(name: str) -> bool:
+    """Return True if the environment variable `name` is set to a truthy value."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Write tools (group membership changes) are opt-in: the server stays read-only
+# unless the operator explicitly enables them.
+_ALLOW_WRITE = _env_flag("MCPAD_ALLOW_WRITE")
+
+
+def _env_list(name: str) -> list[str]:
+    """Parse a comma-separated environment variable into a list of trimmed items."""
+    raw = os.environ.get(name, "")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+# --- Write safety guard-rails ----------------------------------------------
+#
+# Even when writes are enabled, membership changes that touch sensitive
+# accounts or privileged groups are refused. The defaults below are matched
+# case-insensitively against sAMAccountName / cn and can be extended via the
+# MCPAD_PROTECTED_ACCOUNTS / MCPAD_PROTECTED_GROUPS environment variables
+# (comma-separated). Set MCPAD_DISABLE_GUARDRAILS=1 to turn the checks off
+# entirely (not recommended).
+
+#: Accounts that must never be modified through this server.
+_PROTECTED_ACCOUNTS = {
+    name.lower()
+    for name in (
+        "administrator",
+        "admin",
+        "krbtgt",
+        "guest",
+        "system",
+    )
+    + tuple(_env_list("MCPAD_PROTECTED_ACCOUNTS"))
+}
+
+#: Regex patterns for account names that are treated as protected (service /
+#: machine accounts). Matched case-insensitively against the identifier.
+_SERVICE_ACCOUNT_PATTERNS = [
+    r".*\$$",  # machine accounts (end with $)
+    r"svc_.*",  # svc_*
+    r"service_.*",  # service_*
+    r"sa_.*",  # sa_*
+    r"adm_.*",  # adm_*
+    r"sys_.*",  # sys_*
+]
+
+#: Privileged / critical groups that membership changes must never touch.
+_PROTECTED_GROUPS = {
+    name.lower()
+    for name in (
+        "domain admins",
+        "enterprise admins",
+        "schema admins",
+        "administrators",
+        "account operators",
+        "backup operators",
+        "server operators",
+        "print operators",
+        "group policy creator owners",
+        "dnsadmins",
+        "domain users",  # critical system group: removals would be destructive
+    )
+    + tuple(_env_list("MCPAD_PROTECTED_GROUPS"))
+}
+
+_GUARDRAILS_ENABLED = not _env_flag("MCPAD_DISABLE_GUARDRAILS")
+
+
+def _rdn_value(identifier: str) -> str:
+    """Return the leaf label of a DN (the first RDN value), else the string itself.
+
+    ``CN=John Doe,OU=Staff,DC=x`` -> ``John Doe``; ``jdoe`` -> ``jdoe``. Used so
+    the guard-rails match whether the caller passed a sAMAccountName or a DN.
+    """
+    head = identifier.split(",", 1)[0]
+    return head.split("=", 1)[1] if "=" in head else head
+
+
+def _is_protected_account(identifier: str) -> bool:
+    """Return True if `identifier` names a protected or service/machine account."""
+    value = _rdn_value(identifier).lower()
+    if value in _PROTECTED_ACCOUNTS:
+        return True
+    return any(re.fullmatch(pattern, value) for pattern in _SERVICE_ACCOUNT_PATTERNS)
+
+
+def _is_protected_group(identifier: str) -> bool:
+    """Return True if `identifier` names a protected / critical group."""
+    return _rdn_value(identifier).lower() in _PROTECTED_GROUPS
+
+
+class _GuardRailError(Exception):
+    """Raised when a write is refused by the safety guard-rails."""
 
 
 def _jsonable(value: Any) -> Any:
@@ -372,6 +472,301 @@ def is_locked(user: str, domain: str | None = None) -> bool | None:
     """Return True if the account is locked, None if the user is not found."""
     s = _Session(domain)
     return msad.is_locked(s.conn, s.base, user)
+
+
+@mcp.tool
+def disabled_users(
+    base: str | None = None,
+    extra_filter: str = "",
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List disabled user accounts (userAccountControl flag 2).
+
+    Audit counterpart of `is_disabled`: returns every disabled account instead
+    of checking a single user. Pass `base` (a DN) to scope to an OU, or
+    `extra_filter` to AND an extra raw LDAP clause (must be pre-escaped).
+    """
+    s = _Session(domain)
+    return _jsonable(
+        msad.disabled_users(s.conn, base or s.base, extra_filter=extra_filter, limit=limit)
+    )
+
+
+@mcp.tool
+def locked_users(
+    base: str | None = None,
+    extra_filter: str = "",
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List locked-out user accounts (lockoutTime >= 1).
+
+    Audit counterpart of `is_locked`: returns every locked account instead of
+    checking a single user. Pass `base` (a DN) to scope to an OU, or
+    `extra_filter` to AND an extra raw LDAP clause (must be pre-escaped).
+    """
+    s = _Session(domain)
+    return _jsonable(
+        msad.locked_users(s.conn, base or s.base, extra_filter=extra_filter, limit=limit)
+    )
+
+
+@mcp.tool
+def never_expires_password(
+    base: str | None = None,
+    extra_filter: str = "",
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List users whose password never expires (userAccountControl flag 65536).
+
+    A common security-audit check. Pass `base` (a DN) to scope to an OU, or
+    `extra_filter` to AND an extra raw LDAP clause (must be pre-escaped).
+    """
+    s = _Session(domain)
+    return _jsonable(
+        msad.never_expires_password(s.conn, base or s.base, extra_filter=extra_filter, limit=limit)
+    )
+
+
+@mcp.tool
+def get_dn(entry: str, base: str | None = None, domain: str | None = None) -> str | None:
+    """Resolve a sAMAccountName (or DN) to a distinguished name (DN).
+
+    Returns the value unchanged if it already looks like a DN, otherwise looks
+    it up. Returns None if not found. Handy before `get_by_dn` or
+    `get_ou_contents`.
+    """
+    s = _Session(domain)
+    return msad.get_dn(s.conn, base or s.base, entry)
+
+
+@mcp.tool
+def audit_admin_accounts(
+    nested: bool = True,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Audit administrative accounts: members of well-known privileged groups.
+
+    Builds on `get_privileged_groups` (Domain Admins, Enterprise Admins,
+    Administrators, ...) and returns, per group that exists, its attributes,
+    `member_count` and the expanded `members` list. Set `nested=False` to list
+    only direct members instead of recursing into nested groups.
+    """
+    s = _Session(domain)
+    return _jsonable(msad.get_privileged_groups(s.conn, s.base, with_members=True, nested=nested))
+
+
+@mcp.tool
+def search_ldap(
+    search_filter: str,
+    base: str | None = None,
+    attributes: list[str] | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Run a raw LDAP search with a custom filter (read-only, power-user escape hatch).
+
+    Use this when the typed tools (`find_users`, `find_groups`, ...) don't cover
+    a query. The `search_filter` is passed to LDAP verbatim, so it must be a
+    valid, already-escaped RFC 4515 filter, e.g.
+    `(&(objectClass=user)(title=Manager))` or
+    `(&(objectClass=group)(!(member=*)))` for empty groups.
+
+    Args:
+        search_filter: a raw LDAP filter (used as-is; escape any user input).
+        base: DN to search under (defaults to the domain base).
+        attributes: attributes to return (defaults to all attributes).
+        limit: max entries to return (default 100; 0 = no limit).
+
+    Returns:
+        A list of entries, each a dict of attribute name -> value(s).
+    """
+    s = _Session(domain)
+    return _jsonable(
+        msad.search(s.conn, base or s.base, search_filter, limit=limit, attributes=attributes)
+    )
+
+
+# --- Write tools (opt-in via MCPAD_ALLOW_WRITE) ----------------------------
+#
+# These modify AD and are therefore registered only when the operator enables
+# writes. Keeping them behind a flag preserves the read-only default.
+
+if _ALLOW_WRITE:
+
+    def _check_membership_guardrails(group: str, user: str) -> None:
+        """Refuse a membership change that touches a protected account or group.
+
+        Raises _GuardRailError with an explanation when blocked. Disabled when
+        MCPAD_DISABLE_GUARDRAILS is set.
+        """
+        if not _GUARDRAILS_ENABLED:
+            return
+        if _is_protected_account(user):
+            raise _GuardRailError(
+                f"Account '{user}' is protected (administrative or service/machine "
+                f"account) and cannot be modified. Override via MCPAD_PROTECTED_ACCOUNTS "
+                f"or disable with MCPAD_DISABLE_GUARDRAILS=1."
+            )
+        if _is_protected_group(group):
+            raise _GuardRailError(
+                f"Group '{group}' is a protected / critical group and membership "
+                f"changes are refused. Override via MCPAD_PROTECTED_GROUPS or disable "
+                f"with MCPAD_DISABLE_GUARDRAILS=1."
+            )
+
+    @mcp.tool
+    def add_group_member(
+        group: str, user: str, confirm: bool = False, domain: str | None = None
+    ) -> dict[str, Any]:
+        """Add a user to a group (both as sAMAccountName or DN). WRITE operation.
+
+        Only available when MCPAD_ALLOW_WRITE is enabled. Two-phase: the first
+        call (``confirm=False``) returns a preview with
+        ``status="confirmation_required"`` and makes NO change; call again with
+        ``confirm=True`` — only after explicit human approval — to apply it.
+
+        Guard-rails refuse changes to protected accounts (administrative /
+        service / machine) and protected groups (Domain Admins, ...) regardless
+        of ``confirm``. Raises if the group or user cannot be resolved.
+        """
+        try:
+            _check_membership_guardrails(group, user)
+        except _GuardRailError as exc:
+            return {"status": "error", "ok": False, "message": str(exc)}
+
+        if not confirm:
+            return {
+                "status": "confirmation_required",
+                "ok": False,
+                "action": "add_group_member",
+                "group": group,
+                "user": user,
+                "message": (
+                    f"Would add user '{user}' to group '{group}'. Re-call with "
+                    f"confirm=true to apply — only after explicit human approval."
+                ),
+            }
+
+        s = _Session(domain)
+        result = msad.add_member(s.conn, s.base, group, user)
+        return {
+            "status": "success",
+            "ok": bool(result),
+            "action": "add_group_member",
+            "group": group,
+            "user": user,
+            "result": _jsonable(result),
+        }
+
+    @mcp.tool
+    def remove_group_member(
+        group: str, user: str, confirm: bool = False, domain: str | None = None
+    ) -> dict[str, Any]:
+        """Remove a user from a group (both as sAMAccountName or DN). WRITE operation.
+
+        Only available when MCPAD_ALLOW_WRITE is enabled. Two-phase: the first
+        call (``confirm=False``) returns a preview with
+        ``status="confirmation_required"`` and makes NO change; call again with
+        ``confirm=True`` — only after explicit human approval — to apply it.
+
+        Guard-rails refuse changes to protected accounts (administrative /
+        service / machine) and protected groups (Domain Users, ...) regardless
+        of ``confirm``. Raises if the group or user cannot be resolved.
+        """
+        try:
+            _check_membership_guardrails(group, user)
+        except _GuardRailError as exc:
+            return {"status": "error", "ok": False, "message": str(exc)}
+
+        if not confirm:
+            return {
+                "status": "confirmation_required",
+                "ok": False,
+                "action": "remove_group_member",
+                "group": group,
+                "user": user,
+                "message": (
+                    f"Would remove user '{user}' from group '{group}'. Re-call with "
+                    f"confirm=true to apply — only after explicit human approval."
+                ),
+            }
+
+        s = _Session(domain)
+        result = msad.remove_member(s.conn, s.base, group, user)
+        return {
+            "status": "success",
+            "ok": bool(result),
+            "action": "remove_group_member",
+            "group": group,
+            "user": user,
+            "result": _jsonable(result),
+        }
+
+
+# --- Prompts: reusable workflows for common AD tasks -----------------------
+#
+# These guide an MCP client/agent through multi-step tasks using the read-only
+# tools above. They produce text instructions only; they never call tools
+# themselves.
+
+
+@mcp.prompt
+def security_audit(domain: str | None = None) -> str:
+    """Guide a read-only security audit of the Active Directory domain."""
+    scope = f" for domain '{domain}'" if domain else ""
+    return (
+        f"Perform a read-only Active Directory security audit{scope} using the "
+        "available tools, then summarize the findings. Steps:\n"
+        "1. `get_domain_info` and `get_password_policy` — capture domain settings "
+        "and the password policy.\n"
+        "2. `audit_admin_accounts` — list members of privileged groups and flag "
+        "any unexpected or stale admins.\n"
+        "3. `never_expires_password` — list accounts whose password never expires.\n"
+        "4. `get_password_policy_violations` — list accounts violating the policy.\n"
+        "5. `disabled_users` and `locked_users` — note disabled and locked accounts.\n"
+        "6. `find_inactive_users` (days=90) and `find_stale_computers` (days=90) — "
+        "note dormant objects.\n"
+        "Present a concise report grouped by risk, with counts and the notable "
+        "accounts. Do not modify anything."
+    )
+
+
+@mcp.prompt
+def find_inactive(days: int = 90, domain: str | None = None) -> str:
+    """Guide finding and triaging inactive users and stale computers."""
+    scope = f" in domain '{domain}'" if domain else ""
+    return (
+        f"Find objects inactive for at least {days} days{scope} and help triage "
+        "them. Steps:\n"
+        f"1. `find_inactive_users` with days={days} (set include_never=true to also "
+        "catch accounts that never logged on).\n"
+        f"2. `find_stale_computers` with days={days}.\n"
+        "3. For each notable account, use `is_disabled` / `user_groups` to decide "
+        "whether it is safe to disable or remove.\n"
+        "Summarize as a table (name, username, last logon, department) and suggest "
+        "candidates for cleanup. Do not modify anything."
+    )
+
+
+@mcp.prompt
+def group_membership_report(group: str, domain: str | None = None) -> str:
+    """Guide a membership report for a specific group."""
+    scope = f" in domain '{domain}'" if domain else ""
+    return (
+        f"Produce a membership report for the group '{group}'{scope}. Steps:\n"
+        f"1. `get_group` with identifier='{group}' — confirm the group exists and "
+        "read its description / managedBy.\n"
+        f"2. `group_members` with group='{group}', nested=false — list direct "
+        "members.\n"
+        f"3. `group_members` with group='{group}', nested=true — list the full "
+        "effective membership (via nested groups).\n"
+        "4. Note the difference between direct and nested membership, and resolve "
+        "`managedBy` with `get_by_dn` if present.\n"
+        "Present the members (name, username) and the owner. Do not modify anything."
+    )
 
 
 def main() -> None:

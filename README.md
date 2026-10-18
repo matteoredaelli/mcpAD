@@ -4,7 +4,9 @@ A [FastMCP](https://gofastmcp.com) server that exposes the
 [`msad`](https://github.com/matteoredaelli/msad) Active Directory / LDAP library as MCP tools.
 
 Built with **Python 3.14** and **uv**. It reuses the typed, public `msad` API
-(search users/groups, memberships, account status). All tools are read-only.
+(search users/groups, memberships, account status, read-only security audits).
+All tools are read-only by default; optional group-membership write tools are
+disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools)).
 
 ## Tools
 
@@ -21,11 +23,17 @@ Built with **Python 3.14** and **uv**. It reuses the typed, public `msad` API
 | `get_ou_contents` | List objects under an OU (optionally filtered by `object_class`) |
 | `find_inactive_users` | Find users whose last logon is older than `days` (default 90) |
 | `find_stale_computers` | Find computers whose last logon is older than `days` (default 90) |
+| `disabled_users` | List disabled user accounts (audit; counterpart of `is_disabled`) |
+| `locked_users` | List locked-out user accounts (audit; counterpart of `is_locked`) |
+| `never_expires_password` | List users whose password never expires (audit) |
+| `audit_admin_accounts` | Members of well-known privileged groups (admin-account audit) |
 | `get_domain_info` | Domain object: security-relevant settings and metadata (audit) |
 | `get_password_policy` | Default domain password policy (audit) |
 | `get_password_policy_violations` | Users whose password violates the policy (audit) |
 | `get_privileged_groups` | Well-known privileged groups with member counts (audit) |
 | `get_by_dn` | Fetch any entry directly by its DN (resolve `manager` / `managedBy`) |
+| `get_dn` | Resolve a sAMAccountName (or DN) to a distinguished name |
+| `search_ldap` | Run a raw, read-only LDAP search with a custom filter (power-user escape hatch) |
 | `group_members` | List group members (direct or `nested`) |
 | `user_groups` | List a user's groups (nested by default) |
 | `is_member` | Is a user a (nested) member of a group? |
@@ -51,6 +59,74 @@ To expand a manager (or any DN-valued field) into a full record, call
 `get_by_dn` with that DN. This is a direct, efficient lookup (the DN is used as
 the search base), so an agent can do: `get_user("mrossi")` → read `manager` →
 `get_by_dn("<that DN>")`.
+
+### Write tools
+
+The tools above are all **read-only**. Two optional **write** tools modify AD
+group membership and are therefore **disabled by default**. They are registered
+only when the `MCPAD_ALLOW_WRITE` environment variable is set to a truthy value
+(`1`, `true`, `yes`, `on`):
+
+| Tool | Description |
+|---|---|
+| `add_group_member` | Add a user to a group (both as sAMAccountName or DN) |
+| `remove_group_member` | Remove a user from a group (both as sAMAccountName or DN) |
+
+```bash
+MCPAD_ALLOW_WRITE=1 uv run mcpad      # write tools registered
+uv run mcpad                          # read-only (default)
+```
+
+The service account used by `msad` must have the directory permissions to
+modify the target groups; otherwise the call fails with an `MsadError`. When
+writes are disabled the tools are not advertised at all, so an agent cannot
+invoke them.
+
+#### Two-phase confirmation
+
+Both write tools are **two-phase**. The first call (`confirm=false`, the
+default) makes no change and returns a preview:
+
+```json
+{ "status": "confirmation_required", "ok": false, "group": "Sales", "user": "jdoe",
+  "message": "Would add user 'jdoe' to group 'Sales'. Re-call with confirm=true ..." }
+```
+
+Call again with `confirm=true` — only after explicit human approval — to apply
+the change. An agent must never set `confirm=true` on its own.
+
+#### Safety guard-rails
+
+Even with writes enabled, membership changes that touch sensitive objects are
+**refused** (returned as `status: "error"`), regardless of `confirm`:
+
+- **Protected accounts** — `administrator`, `admin`, `krbtgt`, `guest`,
+  `system`, plus any name matching a service/machine pattern
+  (`*$` machine accounts, `svc_*`, `service_*`, `sa_*`, `adm_*`, `sys_*`).
+- **Protected groups** — `Domain Admins`, `Enterprise Admins`, `Schema Admins`,
+  `Administrators`, the operator groups, `Group Policy Creator Owners`,
+  `DnsAdmins`, and `Domain Users` (critical system group).
+
+Matching is case-insensitive and works whether you pass a `sAMAccountName` or a
+full DN. Extend or tune via environment variables:
+
+| Variable | Effect |
+|---|---|
+| `MCPAD_PROTECTED_ACCOUNTS` | Comma-separated extra account names to protect |
+| `MCPAD_PROTECTED_GROUPS` | Comma-separated extra group names to protect |
+| `MCPAD_DISABLE_GUARDRAILS` | Set truthy to turn the checks off (not recommended) |
+
+## Prompts
+
+The server ships a few **MCP prompts** — reusable, read-only workflows that
+guide an agent through multi-step tasks using the tools above. They produce
+instructions only and never modify anything.
+
+| Prompt | Description |
+|---|---|
+| `security_audit` | Walk a read-only domain security audit (policy, admins, stale/violating accounts) and summarize by risk |
+| `find_inactive` | Find and triage inactive users and stale computers (parameter: `days`, default 90) |
+| `group_membership_report` | Report direct vs. nested membership and the owner of a given `group` |
 
 ## Authentication & connection
 
