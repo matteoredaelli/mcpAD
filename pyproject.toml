@@ -40,8 +40,8 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=4.0.9",
-    #"msad>=0.5.0",
-    "msad @ git+https://github.com/matteoredaelli/msad.git"
+    "msad>=0.6.0"
+  #"msad @ git+https://github.com/matteoredaelli/msad.git"
 ]
 
 [project.urls]

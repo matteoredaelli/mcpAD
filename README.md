@@ -119,6 +119,10 @@ Use LDAPS (`port = 636`, `use_ssl = true`) whenever possible.
 
 ## Running
 
+Using uvx:
+
+  uvx --from git+https://github.com/matteoredaelli/mcpAD mcpAD
+
 The `Makefile` wraps the common cases. Transport, host and port are
 configurable:
 
@@ -137,6 +141,7 @@ Equivalent raw commands (the server reads `MCP_TRANSPORT` / `MCP_HOST` /
 uv run mcpad                                        # stdio (default)
 MCP_TRANSPORT=streamable-http MCP_PORT=9000 uv run mcpad
 ```
+
 
 ## Registering the server with an MCP client / agent
 
