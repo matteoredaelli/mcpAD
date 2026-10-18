@@ -63,6 +63,29 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_int(name: str, default: int) -> int:
+    """Return the environment variable `name` as a positive int, else `default`.
+
+    A missing, empty, non-numeric or non-positive value falls back to the
+    default, so a mistyped cap can never silently disable the protection.
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+# Hard cap on the number of rows any single tool may request from AD, to keep
+# responses bounded and avoid inadvertent load on a domain controller. A tool's
+# own `limit` is clamped to this ceiling; callers can still ask for less.
+# Override with MCPAD_MAX_LIMIT (positive integer; default 1000).
+_MAX_LIMIT = _env_int("MCPAD_MAX_LIMIT", 1000)
+
+
 # Write tools (group membership changes) are opt-in: the server stays read-only
 # unless the operator explicitly enables them.
 _ALLOW_WRITE = _env_flag("MCPAD_ALLOW_WRITE")
@@ -310,6 +333,25 @@ def _audited(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+def _cap_limits(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Clamp a tool's ``limit`` keyword to ``_MAX_LIMIT`` before it runs.
+
+    A tool invoked with ``limit`` above the ceiling (or ``limit=0``, which msad
+    treats as "no limit") has it rewritten to ``_MAX_LIMIT``. Applied beneath
+    the audit wrapper so the log records the effective, capped value.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        limit = kwargs.get("limit")
+        if isinstance(limit, int) and not isinstance(limit, bool):
+            if limit <= 0 or limit > _MAX_LIMIT:
+                kwargs["limit"] = _MAX_LIMIT
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def tool(fn: Callable[..., Any] | None = None, *, destructive: bool = False) -> Any:
     """Register `fn` as an MCP tool, wrapped with audit logging and annotations.
 
@@ -322,14 +364,17 @@ def tool(fn: Callable[..., Any] | None = None, *, destructive: bool = False) -> 
       ``destructiveHint: true`` so the client treats it as mutating.
 
     The hints let an MCP client reason about a tool's risk without parsing its
-    name or docstring.
+    name or docstring. Every tool's ``limit`` argument is also clamped to
+    ``MCPAD_MAX_LIMIT`` (see :func:`_cap_limits`).
     """
     annotations = (
         {"readOnlyHint": False, "destructiveHint": True} if destructive else {"readOnlyHint": True}
     )
 
     def register(func: Callable[..., Any]) -> Any:
-        return mcp.tool(_audited(func), annotations=annotations)
+        # Order matters: cap runs before audit snapshots kwargs, so the logged
+        # `limit` is the effective (capped) value the tool actually used.
+        return mcp.tool(_cap_limits(_audited(func)), annotations=annotations)
 
     # Support both @tool and @tool(destructive=True).
     return register if fn is None else register(fn)

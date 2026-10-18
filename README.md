@@ -159,6 +159,22 @@ Notes:
   server logs a warning and continues **without** audit logging (tool calls are
   never blocked by an unwritable log).
 
+## Result limits
+
+Every tool's `limit` argument is clamped to a hard ceiling so a single call
+can't pull an unbounded number of rows from a domain controller. The default
+ceiling is **1000**; a `limit` above it — or `limit=0`, which the underlying
+`msad` library treats as "no limit" — is rewritten to the ceiling. A `limit`
+below the ceiling is used as-is.
+
+```bash
+MCPAD_MAX_LIMIT=500 uv run mcpad      # lower the ceiling to 500
+```
+
+`MCPAD_MAX_LIMIT` must be a positive integer; a missing, empty, non-numeric or
+non-positive value falls back to the default of 1000. The effective (capped)
+value is what appears in the audit log.
+
 ## Prompts
 
 The server ships a few **MCP prompts** — reusable, read-only workflows that
