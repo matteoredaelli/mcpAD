@@ -27,6 +27,15 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `locked_users` | List locked-out user accounts (audit; counterpart of `is_locked`) |
 | `never_expires_password` | List users whose password never expires (audit) |
 | `audit_admin_accounts` | Members of well-known privileged groups (admin-account audit) |
+| `list_fsmo_roles` | Owners of the five FSMO roles (schema, domain-naming, PDC, RID, infrastructure) |
+| `list_trusts` | Domain trust relationships (`trustedDomain` objects) |
+| `list_sites` | Active Directory sites (from the Configuration naming context) |
+| `list_domain_controllers` | Domain controllers (computer accounts flagged `SERVER_TRUST_ACCOUNT`) |
+| `summarize_computer_os` | Count of computer accounts grouped by operating system |
+| `list_empty_groups` | Groups with no direct members (hygiene/audit) |
+| `list_gpos` | Group Policy Objects (`groupPolicyContainer`) |
+| `get_gpo` | A single GPO by its `cn` (GUID) or `displayName` |
+| `list_fine_grained_password_policies` | Fine-grained password policies (PSOs) |
 | `get_domain_info` | Domain object: security-relevant settings and metadata (audit) |
 | `get_password_policy` | Default domain password policy (audit) |
 | `get_password_policy_violations` | Users whose password violates the policy (audit) |
@@ -66,6 +75,26 @@ To expand a manager (or any DN-valued field) into a full record, call
 `get_by_dn` with that DN. This is a direct, efficient lookup (the DN is used as
 the search base), so an agent can do: `get_user("mrossi")` → read `manager` →
 `get_by_dn("<that DN>")`.
+
+### Decoded attributes
+
+By default the server also adds **decoded companion keys** next to the raw
+attributes, so a client doesn't have to interpret AD's opaque numbers and
+binary blobs:
+
+- `userAccountControl_decoded` — a flag list plus booleans (`disabled`,
+  `locked`, `password_never_expires`, ...);
+- `groupType_decoded` — `scope` (global / domain_local / universal) and
+  security vs. distribution;
+- `objectSid_decoded` / `objectGUID_decoded` — canonical `S-1-5-...` / GUID
+  strings;
+- `<attr>_iso` — an ISO-8601 timestamp for FILETIME attributes
+  (`accountExpires`, `lastLogonTimestamp`, `pwdLastSet`, `lockoutTime`, ...),
+  omitted for the "never"/unset sentinels.
+
+The raw attributes are always preserved. Decoding is on by default; set
+`MCPAD_DECODE_ATTRS` to a falsy value (`0`, `false`, `no`, `off`) to return raw
+attributes only.
 
 ### Write tools
 

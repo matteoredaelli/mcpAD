@@ -86,6 +86,19 @@ def _env_int(name: str, default: int) -> int:
 _MAX_LIMIT = _env_int("MCPAD_MAX_LIMIT", 1000)
 
 
+# Decode raw AD attributes (userAccountControl -> flags, FILETIME -> ISO-8601,
+# objectSid / objectGUID -> canonical strings, groupType -> scope) into
+# human-/LLM-friendly companion keys on entry results. Non-destructive: the raw
+# attributes are kept. On by default; set MCPAD_DECODE_ATTRS to a falsy value
+# (0/false/no/off) to return raw attributes only.
+_DECODE_ATTRS = os.environ.get("MCPAD_DECODE_ATTRS", "1").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
 # Write tools (group membership changes) are opt-in: the server stays read-only
 # unless the operator explicitly enables them.
 _ALLOW_WRITE = _env_flag("MCPAD_ALLOW_WRITE")
@@ -190,6 +203,24 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def _present(value: Any) -> Any:
+    """Decode raw AD entries (when MCPAD_DECODE_ATTRS is on) then JSON-serialize.
+
+    Use for tool results that are LDAP entries (a dict) or a list of entries:
+    the decoding (via ``msad.decode_entry`` / ``decode_entries``) runs on the
+    *raw* values — before :func:`_jsonable` turns FILETIME ints and binary
+    SID/GUID blobs into strings — and adds ``*_decoded`` / ``*_iso`` companion
+    keys without touching the originals. With decoding off, it is exactly
+    ``_jsonable``.
+    """
+    if _DECODE_ATTRS:
+        if isinstance(value, list):
+            value = msad.decode_entries(value)
+        elif isinstance(value, dict):
+            value = msad.decode_entry(value)
+    return _jsonable(value)
 
 
 class _Session:
@@ -434,14 +465,14 @@ def find_users(
         department=department,
         limit=limit,
     )
-    return _jsonable(result)
+    return _present(result)
 
 
 @tool
 def get_user(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD user by sAMAccountName, UPN, mail or cn (exact match)."""
     s = _Session(domain)
-    return _jsonable(msad.get_user(s.conn, s.base, identifier))
+    return _present(msad.get_user(s.conn, s.base, identifier))
 
 
 @tool
@@ -453,14 +484,14 @@ def find_groups(
     Pass `base` (a DN, e.g. an OU) to restrict the search to a subtree.
     """
     s = _Session(domain)
-    return _jsonable(msad.find_groups(s.conn, base or s.base, string, limit=limit))
+    return _present(msad.find_groups(s.conn, base or s.base, string, limit=limit))
 
 
 @tool
 def get_group(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD group by sAMAccountName or cn (exact match)."""
     s = _Session(domain)
-    return _jsonable(msad.get_group(s.conn, s.base, identifier))
+    return _present(msad.get_group(s.conn, s.base, identifier))
 
 
 @tool
@@ -472,7 +503,7 @@ def get_by_dn(dn: str, domain: str | None = None) -> dict[str, Any] | None:
     the DN does not exist.
     """
     s = _Session(domain)
-    return _jsonable(msad.get_by_dn(s.conn, dn))
+    return _present(msad.get_by_dn(s.conn, dn))
 
 
 @tool
@@ -490,7 +521,7 @@ def find_computers(
     an OU) to restrict the search to a subtree.
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.find_computers(s.conn, base or s.base, name=name, dns=dns, os=os, limit=limit)
     )
 
@@ -499,7 +530,7 @@ def find_computers(
 def get_computer(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD computer by sAMAccountName, cn or dNSHostName (exact match)."""
     s = _Session(domain)
-    return _jsonable(msad.get_computer(s.conn, s.base, identifier))
+    return _present(msad.get_computer(s.conn, s.base, identifier))
 
 
 @tool
@@ -515,14 +546,14 @@ def find_ous(
     whole domain.
     """
     s = _Session(domain)
-    return _jsonable(msad.find_ous(s.conn, base or s.base, name=name, limit=limit))
+    return _present(msad.find_ous(s.conn, base or s.base, name=name, limit=limit))
 
 
 @tool
 def get_ou(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD organizational unit by its `ou` name or full DN (exact)."""
     s = _Session(domain)
-    return _jsonable(msad.get_ou(s.conn, s.base, identifier))
+    return _present(msad.get_ou(s.conn, s.base, identifier))
 
 
 @tool
@@ -538,7 +569,7 @@ def get_ou_contents(
     organizationalUnit). Returns an empty list if the OU DN does not exist.
     """
     s = _Session(domain)
-    return _jsonable(msad.get_ou_contents(s.conn, ou_dn, object_class=object_class, limit=limit))
+    return _present(msad.get_ou_contents(s.conn, ou_dn, object_class=object_class, limit=limit))
 
 
 @tool
@@ -556,7 +587,7 @@ def find_inactive_users(
     `base` (a DN) to scope to an OU.
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.find_inactive_users(
             s.conn, base or s.base, days=days, include_never=include_never, limit=limit
         )
@@ -578,7 +609,7 @@ def find_stale_computers(
     `base` (a DN) to scope to an OU.
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.find_stale_computers(
             s.conn, base or s.base, days=days, include_never=include_never, limit=limit
         )
@@ -589,14 +620,14 @@ def find_stale_computers(
 def get_domain_info(domain: str | None = None) -> dict[str, Any] | None:
     """Read the domain object: security-relevant settings and metadata (audit)."""
     s = _Session(domain)
-    return _jsonable(msad.get_domain_info(s.conn, s.base))
+    return _present(msad.get_domain_info(s.conn, s.base))
 
 
 @tool
 def get_password_policy(domain: str | None = None) -> dict[str, Any] | None:
     """Read the default domain password policy (maxPwdAge, minPwdLength, ...)."""
     s = _Session(domain)
-    return _jsonable(msad.get_password_policy(s.conn, s.base))
+    return _present(msad.get_password_policy(s.conn, s.base))
 
 
 @tool
@@ -614,7 +645,7 @@ def get_password_policy_violations(
     password age.
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.get_password_policy_violations(
             s.conn, s.base, include_never_set=include_never_set, limit=limit
         )
@@ -634,7 +665,7 @@ def get_privileged_groups(
     expand nested membership).
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.get_privileged_groups(s.conn, s.base, with_members=with_members, nested=nested)
     )
 
@@ -645,7 +676,7 @@ def group_members(
 ) -> list[dict[str, Any]]:
     """List members of a group. Set nested=True for recursive membership."""
     s = _Session(domain)
-    return _jsonable(msad.group_members(s.conn, s.base, group, nested=nested, limit=limit))
+    return _present(msad.group_members(s.conn, s.base, group, nested=nested, limit=limit))
 
 
 @tool
@@ -654,7 +685,7 @@ def user_groups(
 ) -> list[dict[str, Any]] | None:
     """List the groups a user belongs to (nested/recursive by default)."""
     s = _Session(domain)
-    return _jsonable(msad.user_groups(s.conn, s.base, limit, user, nested=nested))
+    return _present(msad.user_groups(s.conn, s.base, limit, user, nested=nested))
 
 
 @tool
@@ -692,7 +723,7 @@ def disabled_users(
     `extra_filter` to AND an extra raw LDAP clause (must be pre-escaped).
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.disabled_users(s.conn, base or s.base, extra_filter=extra_filter, limit=limit)
     )
 
@@ -711,7 +742,7 @@ def locked_users(
     `extra_filter` to AND an extra raw LDAP clause (must be pre-escaped).
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.locked_users(s.conn, base or s.base, extra_filter=extra_filter, limit=limit)
     )
 
@@ -729,7 +760,7 @@ def never_expires_password(
     `extra_filter` to AND an extra raw LDAP clause (must be pre-escaped).
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.never_expires_password(s.conn, base or s.base, extra_filter=extra_filter, limit=limit)
     )
 
@@ -759,7 +790,143 @@ def audit_admin_accounts(
     only direct members instead of recursing into nested groups.
     """
     s = _Session(domain)
-    return _jsonable(msad.get_privileged_groups(s.conn, s.base, with_members=True, nested=nested))
+    return _present(msad.get_privileged_groups(s.conn, s.base, with_members=True, nested=nested))
+
+
+@tool
+def list_fsmo_roles(
+    config_base: str | None = None,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Report the owner of each of the five FSMO roles (audit).
+
+    Returns one entry per role (`schema_master`, `domain_naming_master`,
+    `pdc_emulator`, `rid_master`, `infrastructure_master`) with the `container`
+    queried and the owning DSA DN (`owner`). The schema and domain-naming
+    masters live in the Configuration naming context, derived from the domain
+    base for a single-domain forest; pass `config_base` explicitly for a
+    multi-domain forest. Containers the service account cannot read are skipped.
+    """
+    s = _Session(domain)
+    return _present(msad.list_fsmo_roles(s.conn, s.base, config_base=config_base))
+
+
+@tool
+def list_trusts(
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the domain's trust relationships (audit).
+
+    Reads `trustedDomain` objects under `CN=System,<base>`: trust partner,
+    direction, type and attributes. Returns an empty list if the container
+    cannot be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_trusts(s.conn, s.base, limit=limit))
+
+
+@tool
+def list_sites(
+    config_base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the Active Directory sites (audit).
+
+    Reads `site` objects from `CN=Sites,CN=Configuration,<forest root>`. The
+    Configuration naming context is derived from the domain base for a
+    single-domain forest; pass `config_base` explicitly for a multi-domain
+    forest. Returns an empty list if the container cannot be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_sites(s.conn, s.base, config_base=config_base, limit=limit))
+
+
+@tool
+def list_domain_controllers(
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the domain controllers (computer accounts flagged as DCs).
+
+    Matches the `SERVER_TRUST_ACCOUNT` userAccountControl flag. Returns the
+    usual computer attributes for each DC.
+    """
+    s = _Session(domain)
+    return _present(msad.list_domain_controllers(s.conn, s.base, limit=limit))
+
+
+@tool
+def list_empty_groups(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List groups with no direct members (hygiene/audit).
+
+    Matches groups whose `member` attribute is unset. Pass `base` (a DN) to
+    scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.list_empty_groups(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def summarize_computer_os(
+    base: str | None = None,
+    limit: int = 0,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Summarize computer accounts grouped by operating system (audit/report).
+
+    Returns `{operatingSystem, count}` rows sorted by descending count;
+    computers without an `operatingSystem` are grouped under `(unknown)`. Pass
+    `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _jsonable(msad.summarize_computer_os(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def list_gpos(
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List Group Policy Objects (audit).
+
+    Reads `groupPolicyContainer` objects under `CN=Policies,CN=System,<base>`.
+    Each GPO's `cn` is its GUID and `displayName` the friendly name. Returns an
+    empty list if the Policies container cannot be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_gpos(s.conn, s.base, limit=limit))
+
+
+@tool
+def get_gpo(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
+    """Get a single Group Policy Object by its `cn` (GUID) or `displayName`.
+
+    The GUID may be given with or without braces. Returns None if not found.
+    """
+    s = _Session(domain)
+    return _present(msad.get_gpo(s.conn, s.base, identifier))
+
+
+@tool
+def list_fine_grained_password_policies(
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List fine-grained password policies (PSOs) (audit).
+
+    Reads `msDS-PasswordSettings` objects under
+    `CN=Password Settings Container,CN=System,<base>`. Reading them may require
+    extra directory rights; returns an empty list if the container is not
+    readable.
+    """
+    s = _Session(domain)
+    return _present(msad.list_fine_grained_password_policies(s.conn, s.base, limit=limit))
 
 
 @tool
@@ -788,7 +955,7 @@ def search_ldap(
         A list of entries, each a dict of attribute name -> value(s).
     """
     s = _Session(domain)
-    return _jsonable(
+    return _present(
         msad.search(s.conn, base or s.base, search_filter, limit=limit, attributes=attributes)
     )
 
