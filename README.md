@@ -46,6 +46,13 @@ The `find_users`, `find_groups`, `find_computers` and `find_ous` tools accept an
 optional `base` (a DN, e.g. an OU) to restrict the search to that subtree
 instead of the whole domain.
 
+### Tool annotations
+
+Every tool advertises standard MCP behavior hints so a client can reason about
+its risk without parsing the name or docstring. All the tools above are
+read-only (`readOnlyHint: true`); the optional write tools (see below) are
+marked `destructiveHint: true` (and `readOnlyHint: false`).
+
 ### Returned attributes
 
 By default `get_user` / `find_users` return a useful attribute set: identity
@@ -128,21 +135,26 @@ MCPAD_AUDIT_LOG=/var/log/mcpad/audit.log uv run mcpad
 ```
 
 Each entry carries the UTC timestamp, the tool name, the (redacted) arguments,
-the status, the duration, and — on failure — the error:
+the status, the business outcome, the duration, and — on failure — the error:
 
 ```json
 {"ts": "2026-10-18T20:09:34.029995+00:00", "tool": "add_group_member",
  "params": {"group": "Sales", "user": "jdoe", "confirm": true},
- "status": "ok", "duration_ms": 12.4}
+ "status": "ok", "outcome": "applied", "duration_ms": 12.4}
 ```
 
 Notes:
 
 - Sensitive argument values (`password`, `new_password`, `old_password`,
   `token`, ...) are replaced with `***REDACTED***`.
-- `status` is `ok` when the tool call returned normally and `error` when it
-  raised; a two-phase preview or a guard-rail refusal returns normally, so it
-  is logged as `ok` — the business outcome is in the tool's returned payload.
+- `status` records only whether the Python call returned (`ok`) or raised
+  (`error`). The **`outcome`** field records what actually happened:
+  - `completed` — a read-only tool returned normally (the common case);
+  - `preview` — a two-phase write returned its confirmation preview and
+    changed nothing (`confirm=false`);
+  - `blocked` — a safety guard-rail refused the write;
+  - `applied` — a write was confirmed and executed;
+  - `failed` — the call raised (paired with `status: "error"`).
 - The parent directory is created if needed; if the path cannot be opened the
   server logs a warning and continues **without** audit logging (tool calls are
   never blocked by an unwritable log).

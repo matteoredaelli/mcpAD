@@ -254,6 +254,31 @@ def _write_audit(entry: dict[str, Any]) -> None:
         logging.getLogger(__name__).debug("failed to serialize audit entry", exc_info=True)
 
 
+def _classify_outcome(result: Any) -> str:
+    """Map a tool's returned payload to a business-outcome label for the audit log.
+
+    This complements ``status`` (which only records whether the Python call
+    raised). The labels describe what actually happened:
+
+    - ``preview``   — a two-phase write returned its confirmation preview and
+      changed nothing (``status="confirmation_required"``).
+    - ``blocked``   — a safety guard-rail refused the write (``status="error"``).
+    - ``applied``   — a write was confirmed and executed (``status="success"``).
+    - ``completed`` — a read-only tool returned normally (the common case).
+
+    (The ``failed`` label is set directly by the wrapper when a call raises.)
+    """
+    if isinstance(result, dict):
+        business = result.get("status")
+        if business == "confirmation_required":
+            return "preview"
+        if business == "error":
+            return "blocked"
+        if business == "success":
+            return "applied"
+    return "completed"
+
+
 def _audited(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Wrap a tool function so each call is recorded to the audit log (if enabled)."""
 
@@ -271,11 +296,13 @@ def _audited(fn: Callable[..., Any]) -> Callable[..., Any]:
             result = fn(*args, **kwargs)
         except Exception as exc:
             entry["status"] = "error"
+            entry["outcome"] = "failed"
             entry["error"] = f"{type(exc).__name__}: {exc}"
             entry["duration_ms"] = round((time.monotonic() - start) * 1000, 1)
             _write_audit(entry)
             raise
         entry["status"] = "ok"
+        entry["outcome"] = _classify_outcome(result)
         entry["duration_ms"] = round((time.monotonic() - start) * 1000, 1)
         _write_audit(entry)
         return result
@@ -283,13 +310,29 @@ def _audited(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-def tool(fn: Callable[..., Any]) -> Any:
-    """Register `fn` as an MCP tool, wrapped with audit logging.
+def tool(fn: Callable[..., Any] | None = None, *, destructive: bool = False) -> Any:
+    """Register `fn` as an MCP tool, wrapped with audit logging and annotations.
 
     Drop-in replacement for the bare ``@mcp.tool`` decorator used throughout
-    this module, so every tool is covered by the audit trail automatically.
+    this module, so every tool is covered by the audit trail automatically and
+    advertises standard MCP behavior hints to the client:
+
+    - default (``@tool``): a read-only tool — ``readOnlyHint: true``.
+    - ``@tool(destructive=True)``: a write tool — ``readOnlyHint: false`` and
+      ``destructiveHint: true`` so the client treats it as mutating.
+
+    The hints let an MCP client reason about a tool's risk without parsing its
+    name or docstring.
     """
-    return mcp.tool(_audited(fn))
+    annotations = (
+        {"readOnlyHint": False, "destructiveHint": True} if destructive else {"readOnlyHint": True}
+    )
+
+    def register(func: Callable[..., Any]) -> Any:
+        return mcp.tool(_audited(func), annotations=annotations)
+
+    # Support both @tool and @tool(destructive=True).
+    return register if fn is None else register(fn)
 
 
 @tool
@@ -733,7 +776,7 @@ if _ALLOW_WRITE:
                 f"with MCPAD_DISABLE_GUARDRAILS=1."
             )
 
-    @tool
+    @tool(destructive=True)
     def add_group_member(
         group: str, user: str, confirm: bool = False, domain: str | None = None
     ) -> dict[str, Any]:
@@ -777,7 +820,7 @@ if _ALLOW_WRITE:
             "result": _jsonable(result),
         }
 
-    @tool
+    @tool(destructive=True)
     def remove_group_member(
         group: str, user: str, confirm: bool = False, domain: str | None = None
     ) -> dict[str, Any]:
@@ -821,7 +864,7 @@ if _ALLOW_WRITE:
             "result": _jsonable(result),
         }
 
-    @tool
+    @tool(destructive=True)
     def unlock_account(
         user: str, confirm: bool = False, domain: str | None = None
     ) -> dict[str, Any]:
