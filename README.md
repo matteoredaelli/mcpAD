@@ -269,8 +269,8 @@ The mode is chosen **automatically** from the domain block:
 
 - **Kerberos (SASL)** — when `user`/`password` are *not both* set (the default).
   Requires installing mcpAD with the optional `kerberos` extra (see
-  [Installation](#installation) below), which pulls in `msad`'s `gssapi`
-  dependency. Obtain a ticket first:
+  [Running with uvx](#running-with-uvx) or [Installation](#installation)
+  below), which pulls in `msad`'s `gssapi` dependency. Obtain a ticket first:
 
   ```bash
   kinit                # or: kinit <user>@REALM
@@ -293,29 +293,59 @@ Use LDAPS (`port = 636`, `use_ssl = true`) whenever possible.
 ## Installation
 
 ```bash
-uvx --from git+https://github.com/matteoredaelli/mcpAD mcpAD
+uvx mcpad
 # or, from a checkout:
 uv sync
 ```
 
 Kerberos (SASL/GSSAPI) authentication is optional: `msad`'s `gssapi`
 dependency is a native extension that needs the system Kerberos dev headers
-to build (e.g. `libkrb5-dev` + `krb5-config` on Debian/Ubuntu, `krb5-devel` on
-RHEL/Fedora, `krb5` via Homebrew on macOS). If you only authenticate with
-user/password, skip it entirely; to enable Kerberos, install/sync the
-`kerberos` extra instead:
+to build:
 
-```bash
-uv sync --extra kerberos
-# or: pip install 'mcpad[kerberos]'
-# or, with uvx: uvx --from 'mcpad[kerberos]' mcpad
-```
+- Debian/Ubuntu: `libkrb5-dev` (+ `krb5-config`)
+- RHEL/Fedora: `krb5-devel`
+- macOS (Homebrew): `krb5`
+
+If you only authenticate with user/password, skip it entirely. To enable
+Kerberos, install/sync the `kerberos` extra instead — see
+[Running with uvx](#running-with-uvx) below for the exact command.
 
 ## Running
 
-Using uvx:
+### Running with uvx
 
-  uvx --from git+https://github.com/matteoredaelli/mcpAD mcpAD
+No installation step needed; `uvx` downloads and runs mcpAD on the fly.
+
+```bash
+# User/password auth only (no Kerberos, no system headers needed):
+uvx mcpad
+
+# With Kerberos support (needs the system Kerberos dev headers above):
+kinit                               # get a ticket first
+uvx --from 'mcpad[kerberos]' mcpad
+
+# Latest from Git instead of the PyPI release:
+uvx --from 'mcpad[kerberos] @ git+https://github.com/matteoredaelli/mcpAD' mcpad
+```
+
+For an MCP client config (stdio), the equivalent `command`/`args` is:
+
+```json
+{
+  "mcpServers": {
+    "mcpAD": {
+      "command": "uvx",
+      "args": ["--from", "mcpad[kerberos]", "mcpad"]
+    }
+  }
+}
+```
+
+> The spawned process inherits the environment of whoever launches it, so a
+> Kerberos ticket obtained with `kinit` must be valid in that session (see
+> [Local (stdio)](#local-stdio--the-client-launches-the-server) below).
+
+### From a checkout (Makefile)
 
 The `Makefile` wraps the common cases. Transport, host and port are
 configurable:
@@ -372,6 +402,9 @@ Notes:
   with `kinit` in the same user session is used automatically. For an unattended
   client, point it at a keytab (e.g. add `"KRB5_CLIENT_KTNAME": "/path/to.keytab"`
   to `env`).
+- Prefer not to keep a checkout around? Use `uvx` instead — see the
+  [Running with uvx](#running-with-uvx) JSON example above (same `env` notes
+  apply).
 
 ### Remote (streamable-http) — the server runs as a service
 
