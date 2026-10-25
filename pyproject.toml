@@ -17,7 +17,7 @@
 
 [project]
 name = "mcpad"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A FastMCP server exposing the msad Active Directory / LDAP library"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -65,8 +65,18 @@ mcpad = "mcpad:main"
 # msad = { path = "/tmp/Downloads/github/msad", editable = true }
 
 [build-system]
-requires = ["uv_build>=0.12.19,<0.13.0"]
-build-backend = "uv_build"
+requires = ["hatchling >= 1.32", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+# Derive the version from Git tags (e.g. tag "v0.5.0" -> version "0.5.0").
+# No manual version bump in this file is needed anymore: just create a tag.
+[tool.hatch.version]
+source = "vcs"
+
+# Write the resolved version to a generated module so it is importable at
+# runtime (mcpad.__version__) without re-inspecting Git.
+[tool.hatch.build.hooks.vcs]
+version-file = "src/mcpad/_version.py"
 
 [dependency-groups]
 dev = [

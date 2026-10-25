@@ -43,6 +43,20 @@ import msad
 from fastmcp import FastMCP
 from msad.exceptions import MsadError
 
+try:
+    # Generated at build time by hatch-vcs from the Git tag.
+    from ._version import (
+        __version__ as _MCPAD_VERSION,  # type: ignore[import-not-found,unused-ignore]
+    )
+except ImportError:  # pragma: no cover - only when running from an unbuilt tree
+    from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
+
+    try:
+        _MCPAD_VERSION = _pkg_version("mcpad")
+    except _PackageNotFoundError:
+        _MCPAD_VERSION = "0.0.0.dev0"
+
 mcp: FastMCP = FastMCP(
     name="mcpAD",
     instructions=(
@@ -424,9 +438,10 @@ def test_connection(domain: str | None = None) -> dict[str, Any]:
 
 @tool
 def health(domain: str | None = None) -> dict[str, Any]:
-    """Server health check: reports server name, msad version and AD connectivity."""
+    """Server health check: reports server name, mcpAD/msad version and AD connectivity."""
     result: dict[str, Any] = {
         "server": mcp.name,
+        "mcpad_version": _MCPAD_VERSION,
         "msad_version": msad.__version__,
     }
     try:

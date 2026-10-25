@@ -11,3 +11,6 @@ wheels/
 
 # Assistant/editor local config
 .kiro/
+
+# hatch-vcs generated version file (written at build time)
+src/mcpad/_version.py

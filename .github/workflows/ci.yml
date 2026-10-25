@@ -55,6 +55,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # hatch-vcs derives the version from Git tags; it needs full history.
+          fetch-depth: 0
 
       - name: Install Kerberos development headers
         # The msad dependency builds gssapi against the system krb5 libraries.
