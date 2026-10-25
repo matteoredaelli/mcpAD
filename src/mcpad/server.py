@@ -507,22 +507,49 @@ def get_by_dn(dn: str, domain: str | None = None) -> dict[str, Any] | None:
 
 
 @tool
+def find_contacts(
+    string: str | None = None,
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find AD contact objects by cn/mail/displayName (supports * wildcards).
+
+    Passing no `string` matches every contact. Pass `base` (a DN, e.g. an OU)
+    to restrict the search to a subtree.
+    """
+    s = _Session(domain)
+    return _present(msad.find_contacts(s.conn, base or s.base, string, limit=limit))
+
+
+@tool
 def find_computers(
     name: str | None = None,
     dns: str | None = None,
     os: str | None = None,
+    exclude_domain_controllers: bool = False,
     base: str | None = None,
     limit: int = 100,
     domain: str | None = None,
 ) -> list[dict[str, Any]]:
     """Find AD computers by cn (name), dNSHostName (dns) or operatingSystem (os).
 
-    Criteria are ANDed; values may contain * wildcards. Pass `base` (a DN, e.g.
-    an OU) to restrict the search to a subtree.
+    Criteria are ANDed; values may contain * wildcards. Set
+    `exclude_domain_controllers=True` to drop domain controllers from the
+    results. Pass `base` (a DN, e.g. an OU) to restrict the search to a
+    subtree.
     """
     s = _Session(domain)
     return _present(
-        msad.find_computers(s.conn, base or s.base, name=name, dns=dns, os=os, limit=limit)
+        msad.find_computers(
+            s.conn,
+            base or s.base,
+            name=name,
+            dns=dns,
+            os=os,
+            exclude_domain_controllers=exclude_domain_controllers,
+            limit=limit,
+        )
     )
 
 
@@ -766,6 +793,83 @@ def never_expires_password(
 
 
 @tool
+def never_expiring_accounts(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List users whose ACCOUNT (not password) never expires.
+
+    Matches `accountExpires` set to the "never" sentinel values (0 or
+    9223372036854775807). Distinct from `never_expires_password`, which checks
+    the password-never-expires UAC flag instead. Pass `base` (a DN) to scope
+    to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_never_expiring_accounts(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def expired_accounts(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List users whose `accountExpires` date is in the past (excluding "never").
+
+    Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_expired_accounts(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def password_not_required(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Risk: list users with the PASSWD_NOTREQD UAC flag (account may have no password).
+
+    These accounts may have no password at all, letting anyone authenticate as
+    them and set their own. Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_password_not_required(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def kerberos_preauth_not_required(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Risk: list users not requiring Kerberos pre-authentication.
+
+    These accounts are vulnerable to offline (AS-REP roasting) password
+    guessing. Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_kerberos_preauth_not_required(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def not_delegated(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Risk: list accounts flagged "sensitive and cannot be delegated".
+
+    Worth auditing when a sensitive privilege was granted without also
+    excluding the account from delegation (or vice versa). Pass `base` (a DN)
+    to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_not_delegated(s.conn, base or s.base, limit=limit))
+
+
+@tool
 def get_dn(entry: str, base: str | None = None, domain: str | None = None) -> str | None:
     """Resolve a sAMAccountName (or DN) to a distinguished name (DN).
 
@@ -870,6 +974,23 @@ def list_empty_groups(
     """
     s = _Session(domain)
     return _present(msad.list_empty_groups(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def find_security_groups(
+    scope: str | None = None,
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List security-enabled groups (as opposed to distribution groups).
+
+    Pass `scope` to restrict to one group scope: "global", "domain_local" or
+    "universal" (None returns security groups of any scope). Pass `base` (a
+    DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_security_groups(s.conn, base or s.base, scope=scope, limit=limit))
 
 
 @tool

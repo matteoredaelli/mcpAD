@@ -16,8 +16,9 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `get_user` | Get a single user (exact match) |
 | `find_groups` | Find groups (`*` wildcards) |
 | `get_group` | Get a single group (exact match) |
-| `find_computers` | Find computers by name/dns/os (`*` wildcards) |
+| `find_computers` | Find computers by name/dns/os (`*` wildcards); optionally `exclude_domain_controllers` |
 | `get_computer` | Get a single computer (sAMAccountName/cn/dNSHostName) |
+| `find_contacts` | Find AD contact objects by cn/mail/displayName (`*` wildcards) |
 | `find_ous` | Find organizational units by name (`*` wildcards) |
 | `get_ou` | Get a single OU by its `ou` name or full DN (exact match) |
 | `get_ou_contents` | List objects under an OU (optionally filtered by `object_class`) |
@@ -26,6 +27,11 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `disabled_users` | List disabled user accounts (audit; counterpart of `is_disabled`) |
 | `locked_users` | List locked-out user accounts (audit; counterpart of `is_locked`) |
 | `never_expires_password` | List users whose password never expires (audit) |
+| `never_expiring_accounts` | List users whose ACCOUNT (not password) never expires |
+| `expired_accounts` | List users whose `accountExpires` date is in the past |
+| `password_not_required` | Risk: users with the `PASSWD_NOTREQD` UAC flag (account may have no password) |
+| `kerberos_preauth_not_required` | Risk: users not requiring Kerberos pre-auth (AS-REP roasting exposure) |
+| `not_delegated` | Risk: accounts flagged "sensitive and cannot be delegated" |
 | `audit_admin_accounts` | Members of well-known privileged groups (admin-account audit) |
 | `list_fsmo_roles` | Owners of the five FSMO roles (schema, domain-naming, PDC, RID, infrastructure) |
 | `list_trusts` | Domain trust relationships (`trustedDomain` objects) |
@@ -33,6 +39,7 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `list_domain_controllers` | Domain controllers (computer accounts flagged `SERVER_TRUST_ACCOUNT`) |
 | `summarize_computer_os` | Count of computer accounts grouped by operating system |
 | `list_empty_groups` | Groups with no direct members (hygiene/audit) |
+| `find_security_groups` | List security-enabled groups, optionally by `scope` (global/domain_local/universal) |
 | `list_gpos` | Group Policy Objects (`groupPolicyContainer`) |
 | `get_gpo` | A single GPO by its `cn` (GUID) or `displayName` |
 | `list_fine_grained_password_policies` | Fine-grained password policies (PSOs) |
@@ -261,7 +268,9 @@ while `[defaults].domain` stays `group`.
 The mode is chosen **automatically** from the domain block:
 
 - **Kerberos (SASL)** — when `user`/`password` are *not both* set (the default).
-  Obtain a ticket first:
+  Requires installing mcpAD with the optional `kerberos` extra (see
+  [Installation](#installation) below), which pulls in `msad`'s `gssapi`
+  dependency. Obtain a ticket first:
 
   ```bash
   kinit                # or: kinit <user>@REALM
@@ -280,6 +289,27 @@ The mode is chosen **automatically** from the domain block:
   > Set both, or neither.
 
 Use LDAPS (`port = 636`, `use_ssl = true`) whenever possible.
+
+## Installation
+
+```bash
+uvx --from git+https://github.com/matteoredaelli/mcpAD mcpAD
+# or, from a checkout:
+uv sync
+```
+
+Kerberos (SASL/GSSAPI) authentication is optional: `msad`'s `gssapi`
+dependency is a native extension that needs the system Kerberos dev headers
+to build (e.g. `libkrb5-dev` + `krb5-config` on Debian/Ubuntu, `krb5-devel` on
+RHEL/Fedora, `krb5` via Homebrew on macOS). If you only authenticate with
+user/password, skip it entirely; to enable Kerberos, install/sync the
+`kerberos` extra instead:
+
+```bash
+uv sync --extra kerberos
+# or: pip install 'mcpad[kerberos]'
+# or, with uvx: uvx --from 'mcpad[kerberos]' mcpad
+```
 
 ## Running
 

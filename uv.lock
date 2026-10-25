@@ -5,7 +5,7 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
-    "(python_full_version < '3.14' and sys_platform != 'emscripten') or (python_full_version < '3.12' and sys_platform == 'emscripten')",
+    "python_full_version < '3.12' or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten')",
 ]
 
 [[package]]
@@ -736,6 +736,11 @@ dependencies = [
     { name = "msad" },
 ]
 
+[package.optional-dependencies]
+kerberos = [
+    { name = "msad", extra = ["kerberos"] },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pyrefly" },
@@ -745,8 +750,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=4.0.9" },
-    { name = "msad", editable = "/Users/redaema001/Downloads/github/msad" },
+    { name = "msad", specifier = ">=0.10.0" },
+    { name = "msad", extras = ["kerberos"], marker = "extra == 'kerberos'", specifier = ">=0.10.0" },
 ]
+provides-extras = ["kerberos"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -774,30 +781,22 @@ wheels = [
 
 [[package]]
 name = "msad"
-source = { editable = "/Users/redaema001/Downloads/github/msad" }
+version = "0.10.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
-    { name = "gssapi" },
     { name = "ldap3" },
     { name = "pydantic" },
     { name = "typer" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "cryptography", specifier = "==50.0.1" },
-    { name = "gssapi", specifier = "==1.12.0" },
-    { name = "ldap3", specifier = "==2.9.1" },
-    { name = "pydantic", specifier = ">=2.9" },
-    { name = "typer", specifier = "==0.27.2" },
+sdist = { url = "https://files.pythonhosted.org/packages/7d/06/fd79e580d92859f138e91b4f3215e10f6d01e3465885518f89375adfa080/msad-0.10.0.tar.gz", hash = "sha256:2699872e4f530d1d8b81419b9e1d90c9efbba8657864032e9b46629036a76d94", size = 108431, upload-time = "2026-10-25T19:32:17.539Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/c6/f70fbd8ec441d7f3f2f0e92bfe1c1d70370f2cf390b5ebbb90847b9679f4/msad-0.10.0-py3-none-any.whl", hash = "sha256:44d39fce9ddb87364bc4b60ddb10381a381ea7e1a432e50303902b4149d70436", size = 50972, upload-time = "2026-10-25T19:32:16.453Z" },
 ]
 
-[package.metadata.requires-dev]
-dev = [
-    { name = "pyrefly", specifier = ">=0.16" },
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "ruff", specifier = ">=0.16" },
+[package.optional-dependencies]
+kerberos = [
+    { name = "gssapi" },
 ]
 
 [[package]]
