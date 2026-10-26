@@ -262,6 +262,11 @@ while `[defaults].domain` stays `group`.
 
 - `MSAD_DOMAIN` — default domain when a tool call omits `domain`
 - `MSAD_CONFIG_FILE` — path to an alternative TOML config
+- `MSAD_HOST`, `MSAD_BASE`, `MSAD_PORT`, `MSAD_USE_SSL`, `MSAD_USER`,
+  `MSAD_PASSWORD`, `MSAD_QUERY_TIMEOUT` — override individual connection
+  fields on top of the TOML file (env always wins); same mechanism used by
+  restAD and graphqlAD, so credentials can be injected at runtime without
+  ever being written to `~/.msad.toml`.
 
 ### Authentication modes
 

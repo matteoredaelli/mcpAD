@@ -18,8 +18,11 @@
 """FastMCP server exposing the msad Active Directory / LDAP library as MCP tools.
 
 Each tool opens a short-lived connection using the msad configuration
-(``~/.msad.toml`` by default, or the ``MSAD_DOMAIN`` / ``MSAD_CONFIG_FILE``
-environment variables) and calls the corresponding msad library function.
+(``~/.msad.toml`` by default). ``MSAD_DOMAIN`` / ``MSAD_CONFIG_FILE`` select
+which domain/file to use; ``MSAD_HOST``, ``MSAD_BASE``, ``MSAD_PORT``,
+``MSAD_USE_SSL``, ``MSAD_USER``, ``MSAD_PASSWORD`` and ``MSAD_QUERY_TIMEOUT``
+override individual connection fields on top of the TOML file (env always
+wins) \u2014 see ``msad.resolve_domain_config``.
 
 Run it with:
 
@@ -67,9 +70,9 @@ mcp: FastMCP = FastMCP(
     ),
 )
 
-# Default domain / config file can be overridden per environment.
-_DEFAULT_DOMAIN = os.environ.get("MSAD_DOMAIN") or None
-_CONFIG_FILE = os.environ.get("MSAD_CONFIG_FILE") or None
+# Domain / config-file / connection-field overrides (MSAD_DOMAIN,
+# MSAD_CONFIG_FILE, MSAD_HOST, MSAD_BASE, ...) are resolved live on every
+# call by msad.resolve_domain_config(); see _Session below.
 
 
 def _env_flag(name: str) -> bool:
@@ -241,7 +244,7 @@ class _Session:
     """Resolve config and open a bound connection, raising MsadError on failure."""
 
     def __init__(self, domain: str | None) -> None:
-        self.config = msad.load_domain_config(domain or _DEFAULT_DOMAIN, _CONFIG_FILE)
+        self.config = msad.resolve_domain_config(domain)
         self.conn = msad.connect(self.config)
 
     @property
@@ -432,7 +435,7 @@ def test_connection(domain: str | None = None) -> dict[str, Any]:
     Returns a status dict with `ok`, `target`, `auth` and `error`. Use this to
     verify the configuration and reachability before running other tools.
     """
-    config = msad.load_domain_config(domain or _DEFAULT_DOMAIN, _CONFIG_FILE)
+    config = msad.resolve_domain_config(domain)
     return _jsonable(msad.check_connection(config))
 
 
@@ -445,7 +448,7 @@ def health(domain: str | None = None) -> dict[str, Any]:
         "msad_version": msad.__version__,
     }
     try:
-        config = msad.load_domain_config(domain or _DEFAULT_DOMAIN, _CONFIG_FILE)
+        config = msad.resolve_domain_config(domain)
         result["connection"] = _jsonable(msad.check_connection(config))
     except MsadError as exc:
         # Config could not be loaded (missing file, unknown domain, ...).

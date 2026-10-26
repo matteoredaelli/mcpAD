@@ -48,6 +48,19 @@ accounts/groups matching `_is_protected_account` / `_is_protected_group`
 tool, call these checks the same way the existing three do — do not add a
 write path that skips them, even for an operation that seems low-risk.
 
+## Config resolution is centralized in msad — don't reimplement it
+
+`_Session.__init__` and the `test_connection`/`health` tools all call
+`msad.resolve_domain_config(domain)` — it resolves the TOML file (picking
+`domain` or the `MSAD_DOMAIN` env var's section) and then layers `MSAD_HOST`,
+`MSAD_BASE`, `MSAD_PORT`, `MSAD_USE_SSL`, `MSAD_USER`, `MSAD_PASSWORD` and
+`MSAD_QUERY_TIMEOUT` env overrides on top (shared with restAD and graphqlAD —
+see msad's AGENTS.md). Don't go back to the old
+`msad.load_domain_config(domain, config_file)` + module-level
+`_DEFAULT_DOMAIN`/`_CONFIG_FILE` pattern — it predates this and silently
+ignored those per-field env overrides. If you need a new overridable
+connection field, add it in msad, not here.
+
 ## Kerberos is an optional extra
 
 `[project.optional-dependencies] kerberos = ["msad[kerberos]>=..."]` mirrors
