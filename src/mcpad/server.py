@@ -22,7 +22,7 @@ Each tool opens a short-lived connection using the msad configuration
 which domain/file to use; ``MSAD_HOST``, ``MSAD_BASE``, ``MSAD_PORT``,
 ``MSAD_USE_SSL``, ``MSAD_USER``, ``MSAD_PASSWORD`` and ``MSAD_QUERY_TIMEOUT``
 override individual connection fields on top of the TOML file (env always
-wins) \u2014 see ``msad.resolve_domain_config``.
+wins) — see ``msad.resolve_domain_config``.
 
 Run it with:
 
@@ -39,7 +39,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import msad
@@ -213,7 +213,19 @@ def _jsonable(value: Any) -> Any:
     """Make LDAP values JSON-serializable (datetimes -> ISO strings)."""
     if isinstance(value, datetime.datetime):
         return value.isoformat()
-    if isinstance(value, dict):
+    if isinstance(value, datetime.timedelta):
+        # e.g. maxPwdAge / lockoutDuration from get_password_policy /
+        # get_domain_info: ldap3 decodes these AD "interval" attributes into
+        # timedelta, which plain JSON serialization cannot handle on its own
+        # (silently degrading the whole tool result to unstructured text).
+        return str(value)
+    if isinstance(value, Mapping):
+        # Covers plain dicts *and* ldap3's own CaseInsensitiveDict, which
+        # single-entry msad functions (get_domain_info, get_password_policy,
+        # get_user, ...) return as-is. isinstance(value, dict) is False for
+        # it, so checking only `dict` here would skip this branch entirely
+        # and return the raw, unconverted entry (datetimes/timedeltas/bytes
+        # and all) straight through.
         return {k: _jsonable(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_jsonable(v) for v in value]
@@ -235,8 +247,13 @@ def _present(value: Any) -> Any:
     if _DECODE_ATTRS:
         if isinstance(value, list):
             value = msad.decode_entries(value)
-        elif isinstance(value, dict):
-            value = msad.decode_entry(value)
+        elif isinstance(value, Mapping):
+            # Same CaseInsensitiveDict caveat as in _jsonable: msad's own
+            # decode_entry() already normalizes to a plain dict internally
+            # (`dict(entry)`), but only if we actually call it here. The
+            # explicit dict(...) also satisfies its dict[str, Any] signature
+            # (a Mapping isn't assignable to it under strict typing).
+            value = msad.decode_entry(dict(value))
     return _jsonable(value)
 
 
