@@ -40,7 +40,7 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=4.0.9",
-    "msad>=0.12.0"
+    "msad>=0.12.2"
   #"msad @ git+https://github.com/matteoredaelli/msad.git"
 ]
 
@@ -48,7 +48,7 @@ dependencies = [
 # Kerberos (SASL/GSSAPI) authentication against AD. Needs system Kerberos dev
 # headers to build (see msad's README). Skip if you only use user/password.
 kerberos = [
-    "msad[kerberos]>=0.12.0",
+    "msad[kerberos]>=0.12.2",
 ]
 
 [project.urls]

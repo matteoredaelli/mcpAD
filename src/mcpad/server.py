@@ -457,6 +457,19 @@ def test_connection(domain: str | None = None) -> dict[str, Any]:
 
 
 @tool
+def whoami(domain: str | None = None) -> dict[str, Any]:
+    """Report the identity the connection is bound as.
+
+    Uses the RFC 4532 "Who Am I?" extended operation: the directory server
+    reports the identity it actually authenticated, working with Kerberos/
+    SASL-GSSAPI as well as simple user/password bind. Returns
+    `{"authzid": ...}`.
+    """
+    s = _Session(domain)
+    return {"authzid": msad.whoami(s.conn)}
+
+
+@tool
 def health(domain: str | None = None) -> dict[str, Any]:
     """Server health check: reports server name, mcpAD/msad version and AD connectivity."""
     result: dict[str, Any] = {
