@@ -481,13 +481,17 @@ def find_users(
     mail: str | None = None,
     sam: str | None = None,
     department: str | None = None,
+    city: str | None = None,
+    state: str | None = None,
+    country: str | None = None,
     base: str | None = None,
     limit: int = 100,
     domain: str | None = None,
 ) -> list[dict[str, Any]]:
     """Find AD users by field. Criteria are ANDed; values may contain * wildcards.
 
-    Pass `base` (a DN, e.g. an OU) to restrict the search to a subtree.
+    `city`/`state`/`country` match the `l`/`st`/`co` attributes. Pass `base`
+    (a DN, e.g. an OU) to restrict the search to a subtree.
     """
     s = _Session(domain)
     result = msad.find_users(
@@ -498,6 +502,9 @@ def find_users(
         mail=mail,
         sam=sam,
         department=department,
+        city=city,
+        state=state,
+        country=country,
         limit=limit,
     )
     return _present(result)
@@ -616,6 +623,21 @@ def get_ou(identifier: str, domain: str | None = None) -> dict[str, Any] | None:
     """Get a single AD organizational unit by its `ou` name or full DN (exact)."""
     s = _Session(domain)
     return _present(msad.get_ou(s.conn, s.base, identifier))
+
+
+@tool
+def find_empty_ous(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find organizational units with no nested sub-OU (hygiene/audit).
+
+    Matches OUs whose `ou` attribute has no children. Pass `base` (a DN) to
+    scope to a parent OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_empty_ous(s.conn, base or s.base, limit=limit))
 
 
 @tool
@@ -905,6 +927,72 @@ def not_delegated(
 
 
 @tool
+def find_service_accounts(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Risk: list users with a Service Principal Name (SPN) set.
+
+    Any account with an SPN can have a Kerberos service ticket requested for
+    it by any authenticated user, then cracked offline ("Kerberoasting") if
+    its password is weak. Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_service_accounts(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def find_admin_count_accounts(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find users with adminCount=1 (current or stale protected-admin marker).
+
+    AD sets adminCount=1 via AdminSDHolder on members of protected groups
+    (Domain Admins, Enterprise Admins, ...) and does not automatically clear
+    it once the account is later removed from every such group. Accounts
+    that still carry adminCount=1 but are no longer privileged keep a
+    non-inherited, hardened ACL and are a common audit finding. Pass `base`
+    (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_admin_count_accounts(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def find_must_change_password(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find enabled users who must change their password at next logon.
+
+    Matches pwdLastSet=0, excluding disabled accounts. Pass `base` (a DN) to
+    scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_must_change_password(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def find_users_without_email(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Data-quality check: list users with no `mail` attribute set.
+
+    Accounts without an email address often can't receive password-expiry
+    notices, MFA prompts or other automated notifications. Pass `base` (a DN)
+    to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_users_without_email(s.conn, base or s.base, limit=limit))
+
+
+@tool
 def get_dn(entry: str, base: str | None = None, domain: str | None = None) -> str | None:
     """Resolve a sAMAccountName (or DN) to a distinguished name (DN).
 
@@ -1029,6 +1117,20 @@ def find_security_groups(
 
 
 @tool
+def find_distribution_groups(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List distribution groups (complement of find_security_groups).
+
+    Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_distribution_groups(s.conn, base or s.base, limit=limit))
+
+
+@tool
 def summarize_computer_os(
     base: str | None = None,
     limit: int = 0,
@@ -1083,6 +1185,49 @@ def list_fine_grained_password_policies(
     """
     s = _Session(domain)
     return _present(msad.list_fine_grained_password_policies(s.conn, s.base, limit=limit))
+
+
+@tool
+def find_recently_modified(
+    days: int = 7,
+    object_class: str | None = None,
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find objects whose whenChanged is within the last `days` days (default 7).
+
+    Useful for a "what changed recently in AD" audit. Pass `object_class`
+    (e.g. "user", "group", "computer") to restrict to one object type, and
+    `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(
+        msad.find_recently_modified(
+            s.conn, base or s.base, days=days, object_class=object_class, limit=limit
+        )
+    )
+
+
+@tool
+def find_recently_created(
+    days: int = 7,
+    object_class: str | None = None,
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find objects whose whenCreated is within the last `days` days (default 7).
+
+    Pass `object_class` (e.g. "user", "group", "computer") to restrict to one
+    object type, and `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(
+        msad.find_recently_created(
+            s.conn, base or s.base, days=days, object_class=object_class, limit=limit
+        )
+    )
 
 
 @tool

@@ -12,7 +12,7 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 
 | Tool | Description |
 |---|---|
-| `find_users` | Find users by name/surname/mail/sam/department (ANDed, `*` wildcards) |
+| `find_users` | Find users by name/surname/mail/sam/department/city/state/country (ANDed, `*` wildcards) |
 | `get_user` | Get a single user (exact match) |
 | `find_groups` | Find groups (`*` wildcards) |
 | `get_group` | Get a single group (exact match) |
@@ -22,6 +22,7 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `find_ous` | Find organizational units by name (`*` wildcards) |
 | `get_ou` | Get a single OU by its `ou` name or full DN (exact match) |
 | `get_ou_contents` | List objects under an OU (optionally filtered by `object_class`) |
+| `find_empty_ous` | Organizational units with no nested sub-OU (hygiene/audit) |
 | `find_inactive_users` | Find users whose last logon is older than `days` (default 90) |
 | `find_stale_computers` | Find computers whose last logon is older than `days` (default 90) |
 | `disabled_users` | List disabled user accounts (audit; counterpart of `is_disabled`) |
@@ -32,6 +33,10 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `password_not_required` | Risk: users with the `PASSWD_NOTREQD` UAC flag (account may have no password) |
 | `kerberos_preauth_not_required` | Risk: users not requiring Kerberos pre-auth (AS-REP roasting exposure) |
 | `not_delegated` | Risk: accounts flagged "sensitive and cannot be delegated" |
+| `find_service_accounts` | Risk: users with a Service Principal Name set (Kerberoasting exposure) |
+| `find_admin_count_accounts` | Users with `adminCount=1` (current or stale protected-admin marker) |
+| `find_must_change_password` | Enabled users who must change their password at next logon (`pwdLastSet=0`) |
+| `find_users_without_email` | Data-quality check: users with no `mail` attribute set |
 | `audit_admin_accounts` | Members of well-known privileged groups (admin-account audit) |
 | `list_fsmo_roles` | Owners of the five FSMO roles (schema, domain-naming, PDC, RID, infrastructure) |
 | `list_trusts` | Domain trust relationships (`trustedDomain` objects) |
@@ -40,9 +45,12 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `summarize_computer_os` | Count of computer accounts grouped by operating system |
 | `list_empty_groups` | Groups with no direct members (hygiene/audit) |
 | `find_security_groups` | List security-enabled groups, optionally by `scope` (global/domain_local/universal) |
+| `find_distribution_groups` | List distribution groups (complement of `find_security_groups`) |
 | `list_gpos` | Group Policy Objects (`groupPolicyContainer`) |
 | `get_gpo` | A single GPO by its `cn` (GUID) or `displayName` |
 | `list_fine_grained_password_policies` | Fine-grained password policies (PSOs) |
+| `find_recently_modified` | Objects whose `whenChanged` is within the last `days` days, optionally by `object_class` |
+| `find_recently_created` | Objects whose `whenCreated` is within the last `days` days, optionally by `object_class` |
 | `get_domain_info` | Domain object: security-relevant settings and metadata (audit) |
 | `get_password_policy` | Default domain password policy (audit) |
 | `get_password_policy_violations` | Users whose password violates the policy (audit) |
