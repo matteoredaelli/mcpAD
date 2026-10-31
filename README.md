@@ -416,7 +416,8 @@ setup and keeps everything on your machine (including your Kerberos ticket).
 
 To connect **without a `~/.msad.toml`**, set the `MSAD_*` connection variables
 directly in the `env` block — the server reads them live on every tool call
-(env always wins over the TOML file):
+(env always wins over the TOML file). This example uses **Kerberos** (no
+`MSAD_USER` / `MSAD_PASSWORD`):
 
 ```json
 {
@@ -429,14 +430,25 @@ directly in the `env` block — the server reads them live on every tool call
         "MSAD_BASE": "dc=example,dc=com",
         "MSAD_PORT": "636",
         "MSAD_USE_SSL": "true",
-        "MSAD_QUERY_TIMEOUT": "30",
-
-        "MSAD_USER": "svc_reader",
-        "MSAD_PASSWORD": "s3cr3t"
+        "MSAD_QUERY_TIMEOUT": "30"
       }
     }
   }
 }
+```
+
+For a **user/password** bind instead, add **both** `MSAD_USER` and
+`MSAD_PASSWORD` to the same `env` block:
+
+```json
+      "env": {
+        "MSAD_HOST": "dc.example.com",
+        "MSAD_BASE": "dc=example,dc=com",
+        "MSAD_PORT": "636",
+        "MSAD_USE_SSL": "true",
+        "MSAD_USER": "svc_reader",
+        "MSAD_PASSWORD": "s3cr3t"
+      }
 ```
 
 Notes on the `env` block:
@@ -445,10 +457,11 @@ Notes on the `env` block:
 - All values are strings (JSON has no bare integers/booleans here): `"636"`,
   `"true"`/`"false"` (also `1`/`0`, `yes`/`no`, `on`/`off`) are coerced by
   `msad`.
-- Omit `MSAD_USER` / `MSAD_PASSWORD` to use **Kerberos** instead (see
-  [Authentication modes](#authentication-modes)); set **both** for a
-  user/password bind. Avoid committing a plaintext `MSAD_PASSWORD` to a shared
-  config — prefer Kerberos or inject it from a secret store.
+- Authentication mode is implicit: with `MSAD_USER` / `MSAD_PASSWORD` **unset**
+  (or only one set) the server uses **Kerberos** (see
+  [Authentication modes](#authentication-modes) and `kinit`); set **both** for
+  a user/password bind. Avoid committing a plaintext `MSAD_PASSWORD` to a
+  shared config — prefer Kerberos or inject it from a secret store.
 - `MSAD_DOMAIN` / `MSAD_CONFIG_FILE` still work here to pick a domain or an
   alternative TOML when you do keep a config file.
 
