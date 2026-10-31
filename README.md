@@ -300,6 +300,17 @@ The mode is chosen **automatically** from the domain block:
   clean `MsadConnectionError` message. When running as a background/remote
   service, make sure that process can see a valid ticket or keytab.
 
+  > **Platform note — do you need `kinit`?** The Kerberos ticket is obtained by
+  > the system GSSAPI layer, not by mcpAD. On **macOS/Linux** the credential
+  > cache is empty until you run `kinit` (or supply a keytab), so a ticket is
+  > required. On **Windows**, GSSAPI maps to SSPI: a **domain-joined** machine
+  > running as a **domain user** reuses the ticket from the interactive logon,
+  > so usually **no `kinit` is needed**. Windows still needs an explicit
+  > ticket/keytab (and a correct `ldap/<host>` SPN and DNS) when the host is not
+  > domain-joined, when running as a local/service account, or in other
+  > contexts without a logon ticket — which is the common case for an
+  > unattended/remote (streamable-http) deployment.
+
 - **User / password** — when **both** `user` and `password` are set. Simple LDAP
   bind. The password is stored in clear text in the TOML, so restrict the file
   permissions (`chmod 600 ~/.msad.toml`).
