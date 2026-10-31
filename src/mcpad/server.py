@@ -1084,6 +1084,130 @@ def list_sites(
 
 
 @tool
+def list_subnets(
+    config_base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the Active Directory subnets (audit).
+
+    Reads `subnet` objects from `CN=Subnets,CN=Sites,CN=Configuration,<forest
+    root>`. Each subnet's `cn` is its network prefix in CIDR form (e.g.
+    `10.20.0.0/16`) and `siteObject` is the DN of the associated site. Pass
+    `config_base` explicitly for a multi-domain forest. Returns an empty list
+    if the container cannot be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_subnets(s.conn, s.base, config_base=config_base, limit=limit))
+
+
+@tool
+def list_site_links(
+    config_base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the Active Directory site links (audit).
+
+    Reads `siteLink` objects from `CN=Inter-Site Transports,CN=Sites,
+    CN=Configuration,<forest root>`: the sites they connect, cost and
+    replication interval. Pass `config_base` explicitly for a multi-domain
+    forest. Returns an empty list if the container cannot be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_site_links(s.conn, s.base, config_base=config_base, limit=limit))
+
+
+@tool
+def list_servers(
+    config_base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the directory servers (domain controllers) by site (audit).
+
+    Reads `server` objects under `CN=Sites,CN=Configuration,<forest root>` —
+    the site-centric view of the forest's DCs. Pass `config_base` explicitly
+    for a multi-domain forest. Returns an empty list if the container cannot
+    be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_servers(s.conn, s.base, config_base=config_base, limit=limit))
+
+
+@tool
+def list_dns_zones(
+    zone_base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the AD-integrated DNS zones (audit).
+
+    Reads `dnsZone` objects from `DC=DomainDnsZones,<base>` by default; pass
+    `zone_base` to target the forest-wide partition (`DC=ForestDnsZones,
+    <forest root>`) or the legacy System container. Only AD-integrated zones
+    are visible over LDAP; file-backed zones are not. Returns an empty list if
+    the partition cannot be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_dns_zones(s.conn, s.base, zone_base=zone_base, limit=limit))
+
+
+@tool
+def list_dns_records(
+    zone: str,
+    zone_base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the DNS records of an AD-integrated zone (audit).
+
+    Reads `dnsNode` objects of the given `zone` (e.g. `example.com`). The
+    binary `dnsRecord` values are decoded (A/AAAA/NS/CNAME/PTR/MX/SRV/SOA/TXT)
+    into a `dnsRecord_decoded` field. Pass `zone_base` to target a non-default
+    partition. Returns an empty list if the zone cannot be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_dns_records(s.conn, s.base, zone, zone_base=zone_base, limit=limit))
+
+
+@tool
+def list_authorized_dhcp_servers(
+    config_base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the DHCP servers authorized in AD (audit).
+
+    Reads `dHCPClass` objects from `CN=NetServices,CN=Services,CN=Configuration,
+    <forest root>`. This reflects only which DHCP servers are authorized in the
+    directory; scopes, pools, leases and reservations are not exposed over
+    LDAP. Pass `config_base` explicitly for a multi-domain forest. Returns an
+    empty list if the container cannot be read.
+    """
+    s = _Session(domain)
+    return _present(
+        msad.list_authorized_dhcp_servers(s.conn, s.base, config_base=config_base, limit=limit)
+    )
+
+
+@tool
+def list_dfs_namespaces(
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the domain-based DFS namespace roots (audit).
+
+    Reads `fTDfs` objects under `CN=Dfs-Configuration,CN=System,<base>`. Each
+    root's `cn` is the namespace name; the binary topology blob (`pKT`) is not
+    decoded. Stand-alone DFS namespaces are not stored in AD. Returns an empty
+    list if the container cannot be read.
+    """
+    s = _Session(domain)
+    return _present(msad.list_dfs_namespaces(s.conn, s.base, limit=limit))
+
+
+@tool
 def list_domain_controllers(
     limit: int = 100,
     domain: str | None = None,
