@@ -277,47 +277,10 @@ while `[defaults].domain` stays `group`.
   restAD and graphqlAD, so credentials can be injected at runtime without
   ever being written to `~/.msad.toml`.
 
-Because env always wins over the TOML file (and the missing fields just stay
-unset), you can run the server **without any `~/.msad.toml` at all**, setting
-every connection parameter through the environment. Example `.env` file:
-
-```bash
-# --- Connection (host / port / search base) ---
-MSAD_HOST=dc.example.com                 # hostname only: no scheme, no :port
-MSAD_PORT=636                            # 636 = LDAPS, 389 = plain LDAP
-MSAD_USE_SSL=true                        # true/false (also: 1/0, yes/no, on/off)
-MSAD_BASE=dc=example,dc=com              # search base (naming context)
-MSAD_QUERY_TIMEOUT=30                    # optional: ldap3 receive timeout (s)
-
-# --- Authentication ---
-# Option A — Kerberos (SASL): leave MSAD_USER / MSAD_PASSWORD unset and `kinit`.
-# Option B — user / password bind: set BOTH of the following.
-# MSAD_USER=svc_reader
-# MSAD_PASSWORD=s3cr3t
-
-# --- Optional: multi-domain selection when a ~/.msad.toml is present ---
-# MSAD_DOMAIN=group                      # default domain if a tool omits `domain`
-# MSAD_CONFIG_FILE=/etc/mcpad/msad.toml  # use an alternative TOML path
-```
-
-Load it before starting the server, for example:
-
-```bash
-set -a; source .env; set +a      # export every MSAD_* variable
-uv run mcpad
-```
-
-Or inline for a single run:
-
-```bash
-MSAD_HOST=dc.example.com MSAD_PORT=636 MSAD_USE_SSL=true \
-  MSAD_BASE=dc=example,dc=com uv run mcpad
-```
-
-> Precedence: environment variables override the matching field in
-> `~/.msad.toml`; fields set in neither keep their defaults
-> (`port=389`, `use_ssl=false`). `MSAD_HOST` and `MSAD_BASE` are the only
-> strictly required connection fields.
+These `MSAD_*` variables can be set directly in the `env` block of your MCP
+client config — see
+[Registering the server with an MCP client / agent](#registering-the-server-with-an-mcp-client--agent)
+for a full `mcp.json` example.
 
 ### Authentication modes
 
@@ -450,6 +413,44 @@ setup and keeps everything on your machine (including your Kerberos ticket).
   }
 }
 ```
+
+To connect **without a `~/.msad.toml`**, set the `MSAD_*` connection variables
+directly in the `env` block — the server reads them live on every tool call
+(env always wins over the TOML file):
+
+```json
+{
+  "mcpServers": {
+    "mcpAD": {
+      "command": "uvx",
+      "args": ["--from", "mcpad[kerberos]", "mcpad"],
+      "env": {
+        "MSAD_HOST": "dc.example.com",
+        "MSAD_BASE": "dc=example,dc=com",
+        "MSAD_PORT": "636",
+        "MSAD_USE_SSL": "true",
+        "MSAD_QUERY_TIMEOUT": "30",
+
+        "MSAD_USER": "svc_reader",
+        "MSAD_PASSWORD": "s3cr3t"
+      }
+    }
+  }
+}
+```
+
+Notes on the `env` block:
+- `MSAD_HOST` and `MSAD_BASE` are the only required connection fields;
+  `MSAD_PORT` defaults to `389` and `MSAD_USE_SSL` to `false`.
+- All values are strings (JSON has no bare integers/booleans here): `"636"`,
+  `"true"`/`"false"` (also `1`/`0`, `yes`/`no`, `on`/`off`) are coerced by
+  `msad`.
+- Omit `MSAD_USER` / `MSAD_PASSWORD` to use **Kerberos** instead (see
+  [Authentication modes](#authentication-modes)); set **both** for a
+  user/password bind. Avoid committing a plaintext `MSAD_PASSWORD` to a shared
+  config — prefer Kerberos or inject it from a secret store.
+- `MSAD_DOMAIN` / `MSAD_CONFIG_FILE` still work here to pick a domain or an
+  alternative TOML when you do keep a config file.
 
 Notes:
 - `--directory` makes `uv` use this project's environment regardless of the
