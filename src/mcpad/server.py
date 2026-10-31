@@ -714,6 +714,47 @@ def find_stale_computers(
 
 
 @tool
+def find_computers_by_os(
+    os: str,
+    base: str | None = None,
+    exclude_domain_controllers: bool = False,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find computers whose `operatingSystem` matches `os` (* wildcards ok).
+
+    Convenience over `find_computers` for OS-based inventory, e.g.
+    `"Windows Server 2019*"`. Set `exclude_domain_controllers=True` to drop
+    DCs. Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(
+        msad.find_computers_by_os(
+            s.conn,
+            base or s.base,
+            os,
+            exclude_domain_controllers=exclude_domain_controllers,
+            limit=limit,
+        )
+    )
+
+
+@tool
+def find_disabled_computers(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find disabled computer accounts (ACCOUNTDISABLE UAC flag) (audit).
+
+    The computer counterpart of `disabled_users`. Pass `base` (a DN) to scope
+    to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_disabled_computers(s.conn, base or s.base, limit=limit))
+
+
+@tool
 def get_domain_info(domain: str | None = None) -> dict[str, Any] | None:
     """Read the domain object: security-relevant settings and metadata (audit)."""
     s = _Session(domain)
@@ -1099,6 +1140,41 @@ def list_subnets(
     """
     s = _Session(domain)
     return _present(msad.list_subnets(s.conn, s.base, config_base=config_base, limit=limit))
+
+
+@tool
+def get_site(
+    identifier: str,
+    config_base: str | None = None,
+    domain: str | None = None,
+) -> dict[str, Any] | None:
+    """Get a single Active Directory site by its `cn` (name) (audit).
+
+    Reads one `site` object from `CN=Sites,CN=Configuration,<forest root>`.
+    Pass `config_base` explicitly for a multi-domain forest. Returns `null` if
+    no site matches.
+    """
+    s = _Session(domain)
+    result = msad.get_site(s.conn, s.base, identifier, config_base=config_base)
+    return _present(result) if result else None
+
+
+@tool
+def get_subnet(
+    identifier: str,
+    config_base: str | None = None,
+    domain: str | None = None,
+) -> dict[str, Any] | None:
+    """Get a single Active Directory subnet by its `cn` (CIDR) (audit).
+
+    Reads one `subnet` object (e.g. `10.20.0.0/16`) from `CN=Subnets,CN=Sites,
+    CN=Configuration,<forest root>`; the result includes `siteObject`. Pass
+    `config_base` explicitly for a multi-domain forest. Returns `null` if no
+    subnet matches.
+    """
+    s = _Session(domain)
+    result = msad.get_subnet(s.conn, s.base, identifier, config_base=config_base)
+    return _present(result) if result else None
 
 
 @tool
