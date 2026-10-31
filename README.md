@@ -277,6 +277,48 @@ while `[defaults].domain` stays `group`.
   restAD and graphqlAD, so credentials can be injected at runtime without
   ever being written to `~/.msad.toml`.
 
+Because env always wins over the TOML file (and the missing fields just stay
+unset), you can run the server **without any `~/.msad.toml` at all**, setting
+every connection parameter through the environment. Example `.env` file:
+
+```bash
+# --- Connection (host / port / search base) ---
+MSAD_HOST=dc.example.com                 # hostname only: no scheme, no :port
+MSAD_PORT=636                            # 636 = LDAPS, 389 = plain LDAP
+MSAD_USE_SSL=true                        # true/false (also: 1/0, yes/no, on/off)
+MSAD_BASE=dc=example,dc=com              # search base (naming context)
+MSAD_QUERY_TIMEOUT=30                    # optional: ldap3 receive timeout (s)
+
+# --- Authentication ---
+# Option A — Kerberos (SASL): leave MSAD_USER / MSAD_PASSWORD unset and `kinit`.
+# Option B — user / password bind: set BOTH of the following.
+# MSAD_USER=svc_reader
+# MSAD_PASSWORD=s3cr3t
+
+# --- Optional: multi-domain selection when a ~/.msad.toml is present ---
+# MSAD_DOMAIN=group                      # default domain if a tool omits `domain`
+# MSAD_CONFIG_FILE=/etc/mcpad/msad.toml  # use an alternative TOML path
+```
+
+Load it before starting the server, for example:
+
+```bash
+set -a; source .env; set +a      # export every MSAD_* variable
+uv run mcpad
+```
+
+Or inline for a single run:
+
+```bash
+MSAD_HOST=dc.example.com MSAD_PORT=636 MSAD_USE_SSL=true \
+  MSAD_BASE=dc=example,dc=com uv run mcpad
+```
+
+> Precedence: environment variables override the matching field in
+> `~/.msad.toml`; fields set in neither keep their defaults
+> (`port=389`, `use_ssl=false`). `MSAD_HOST` and `MSAD_BASE` are the only
+> strictly required connection fields.
+
 ### Authentication modes
 
 The mode is chosen **automatically** from the domain block:
