@@ -382,6 +382,31 @@ For an MCP client config (stdio), the equivalent `command`/`args` is:
 > Kerberos ticket obtained with `kinit` must be valid in that session (see
 > [Local (stdio)](#local-stdio--the-client-launches-the-server) below).
 
+> **Keeping up to date.** `uvx` resolves the latest version only on its
+> *first* invocation of a given spec; after that it reuses the cached
+> environment indefinitely, even once a newer release is published
+> ([uv docs](https://docs.astral.sh/uv/concepts/tools/)). Restarting your
+> MCP client (which just re-spawns the same `uvx` command) will **not**
+> pick up a new mcpAD/msad release on its own. To force an update:
+>
+> ```bash
+> # one-off: refreshes the cache, future launches reuse the new version
+> uvx --refresh --from 'mcpad[kerberos]' mcpad --help
+>
+> # or: always re-check on every launch (small startup overhead)
+> uvx --refresh --from 'mcpad[kerberos]' mcpad
+> ```
+>
+> For an MCP client config, add `--refresh` to `args` if you want every
+> restart to auto-update:
+>
+> ```json
+> "args": ["--refresh", "--from", "mcpad[kerberos]", "mcpad"]
+> ```
+>
+> After updating, call the `health` tool to confirm the new
+> `mcpad_version`/`msad_version`.
+
 ### From a checkout (Makefile)
 
 The `Makefile` wraps the common cases. Transport, host and port are
