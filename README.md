@@ -301,15 +301,22 @@ The mode is chosen **automatically** from the domain block:
   service, make sure that process can see a valid ticket or keytab.
 
   > **Platform note — do you need `kinit`?** The Kerberos ticket is obtained by
-  > the system GSSAPI layer, not by mcpAD. On **macOS/Linux** the credential
-  > cache is empty until you run `kinit` (or supply a keytab), so a ticket is
-  > required. On **Windows**, GSSAPI maps to SSPI: a **domain-joined** machine
-  > running as a **domain user** reuses the ticket from the interactive logon,
-  > so usually **no `kinit` is needed**. Windows still needs an explicit
-  > ticket/keytab (and a correct `ldap/<host>` SPN and DNS) when the host is not
-  > domain-joined, when running as a local/service account, or in other
-  > contexts without a logon ticket — which is the common case for an
-  > unattended/remote (streamable-http) deployment.
+  > whichever backend msad's `kerberos` extra installs for your platform (see
+  > msad's README): `gssapi` on macOS/Linux, `winkerberos` on Windows.
+  >
+  > On **macOS/Linux** the `gssapi` credential cache is empty until you run
+  > `kinit` (or supply a keytab), so a ticket is required.
+  >
+  > On **Windows**, `winkerberos` wraps native SSPI directly: a
+  > **domain-joined** machine running as a **domain user** reuses the ticket
+  > from the interactive logon, giving real SSO with **no `kinit` needed**.
+  > This has not been verified end-to-end by this project against a real AD
+  > on Windows — validate it yourself (e.g. with msad's `whoami`/
+  > `test-connection` CLI commands) before relying on it. Windows still needs
+  > an explicit ticket/keytab when the host is not domain-joined, when
+  > running as a local/service account, or in other contexts without a logon
+  > ticket — which is the common case for an unattended/remote
+  > (streamable-http) deployment.
 
 - **User / password** — when **both** `user` and `password` are set. Simple LDAP
   bind. The password is stored in clear text in the TOML, so restrict the file
