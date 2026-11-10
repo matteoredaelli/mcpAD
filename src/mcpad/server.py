@@ -1,4 +1,3 @@
-# Copyright 2026 Matteo Redaelli
 # mcpAD - MCP server for Active Directory / LDAP (built on msad)
 # Copyright (C) 2026 - matteo.redaelli@gmail.com
 #

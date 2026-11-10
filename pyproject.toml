@@ -21,6 +21,7 @@ dynamic = ["version"]
 description = "A FastMCP server exposing the msad Active Directory / LDAP library"
 readme = "README.md"
 license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
     { name = "Matteo Redaelli", email = "matteo.redaelli@gmail.com" }
 ]
