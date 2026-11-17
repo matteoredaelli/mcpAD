@@ -305,23 +305,18 @@ The mode is chosen **automatically** from the domain block:
   clean `MsadConnectionError` message. When running as a background/remote
   service, make sure that process can see a valid ticket or keytab.
 
-  > **Platform note — do you need `kinit`?** The Kerberos ticket is obtained by
-  > whichever backend msad's `kerberos` extra installs for your platform (see
-  > msad's README): `gssapi` on macOS/Linux, `winkerberos` on Windows.
+  > **Kerberos ticket per platform.** The backend differs by OS (see
+  > [msad's README](https://github.com/matteoredaelli/msad#prerequisites)):
+  > `gssapi` on macOS/Linux, `winkerberos` on Windows.
   >
-  > On **macOS/Linux** the `gssapi` credential cache is empty until you run
-  > `kinit` (or supply a keytab), so a ticket is required.
-  >
-  > On **Windows**, `winkerberos` wraps native SSPI directly: a
-  > **domain-joined** machine running as a **domain user** reuses the ticket
-  > from the interactive logon, giving real SSO with **no `kinit` needed**.
-  > This has not been verified end-to-end by this project against a real AD
-  > on Windows — validate it yourself (e.g. with msad's `whoami`/
-  > `test-connection` CLI commands) before relying on it. Windows still needs
-  > an explicit ticket/keytab when the host is not domain-joined, when
-  > running as a local/service account, or in other contexts without a logon
-  > ticket — which is the common case for an unattended/remote
-  > (streamable-http) deployment.
+  > - **macOS/Linux**: `kinit` is required — the `gssapi` credential cache
+  >   is empty otherwise (or supply a keytab).
+  > - **Windows**: `winkerberos` wraps native SSPI, so a domain-joined
+  >   machine reuses the interactive-logon ticket automatically — **no
+  >   `kinit` needed**. *Not verified end-to-end by this project against a
+  >   real AD on Windows* — validate with `whoami`/`test-connection`.
+  >   Still needs an explicit ticket/keytab for non-domain-joined hosts,
+  >   service accounts, or unattended/remote deployments.
 
 - **User / password** — when **both** `user` and `password` are set. Simple LDAP
   bind. The password is stored in clear text in the TOML, so restrict the file
@@ -340,13 +335,14 @@ uvx mcpad
 uv sync
 ```
 
-Kerberos (SASL/GSSAPI) authentication is optional: `msad`'s `gssapi`
-dependency is a native extension that needs the system Kerberos dev headers
-to build:
+Kerberos (SASL) authentication is optional and installs a different backend
+per platform via `msad[kerberos]`:
 
 - Debian/Ubuntu: `libkrb5-dev` (+ `krb5-config`)
 - RHEL/Fedora: `krb5-devel`
 - macOS (Homebrew): `krb5`
+- Windows: nothing — `winkerberos` ships a prebuilt wheel, no system
+  headers needed.
 
 If you only authenticate with user/password, skip it entirely. To enable
 Kerberos, install/sync the `kerberos` extra instead — see
