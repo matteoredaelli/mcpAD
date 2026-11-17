@@ -754,6 +754,22 @@ def find_disabled_computers(
 
 
 @tool
+def find_obsolete_os_computers(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find computers running a commonly-cited end-of-life Windows version.
+
+    ORs operatingSystem against a fixed list of legacy OS name prefixes
+    (Windows 2000/XP/Vista/7/8, Server 2003/2008/2012) often used in AD
+    security checklists. Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_obsolete_os_computers(s.conn, base or s.base, limit=limit))
+
+
+@tool
 def get_domain_info(domain: str | None = None) -> dict[str, Any] | None:
     """Read the domain object: security-relevant settings and metadata (audit)."""
     s = _Session(domain)
@@ -1043,6 +1059,68 @@ def find_users_without_email(
     """
     s = _Session(domain)
     return _present(msad.find_users_without_email(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def find_almost_locked_out(
+    threshold: int = 4,
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find enabled users close to the lockout threshold (badPwdCount).
+
+    `badPwdCount` resets on a successful logon or once the domain's lockout
+    observation window elapses, so this is a live, point-in-time signal
+    (password-spraying in progress, or users about to be locked out).
+    Compare `threshold` against the domain's actual `lockoutThreshold` (see
+    `get_password_policy`). Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(
+        msad.find_almost_locked_out(s.conn, base or s.base, threshold=threshold, limit=limit)
+    )
+
+
+@tool
+def find_credentials_in_description(
+    keyword: list[str] | None = None,
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Risk: list users whose description may contain a plaintext credential.
+
+    A classic finding: admins sometimes note a password, PIN or hint
+    directly in the `description` field, readable by any authenticated user
+    by default. `keyword` defaults to ["pass", "pwd"] if omitted. Pass
+    `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(
+        msad.find_credentials_in_description(s.conn, base or s.base, keywords=keyword, limit=limit)
+    )
+
+
+@tool
+def find_shadow_credentials(
+    object_class: str | None = None,
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Risk: list users/computers with a msDS-KeyCredentialLink (Shadow Credentials).
+
+    A populated msDS-KeyCredentialLink registers an alternate
+    certificate-based credential that can authenticate as the object without
+    knowing its password -- a common persistence/privilege-escalation
+    technique. Pass `object_class` ("user" or "computer") to restrict to one
+    type, or omit to match either. Pass `base` (a DN) to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(
+        msad.find_shadow_credentials(s.conn, base or s.base, object_class=object_class, limit=limit)
+    )
 
 
 @tool
@@ -1340,6 +1418,23 @@ def find_distribution_groups(
     """
     s = _Session(domain)
     return _present(msad.find_distribution_groups(s.conn, base or s.base, limit=limit))
+
+
+@tool
+def find_admin_count_groups(
+    base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find groups with adminCount=1 (current or stale protected-group marker).
+
+    Complement of find_admin_count_accounts on the group side: AD sets
+    adminCount=1 via AdminSDHolder on groups protected by nesting under
+    Domain Admins, Enterprise Admins, Schema Admins, etc. Pass `base` (a DN)
+    to scope to an OU.
+    """
+    s = _Session(domain)
+    return _present(msad.find_admin_count_groups(s.conn, base or s.base, limit=limit))
 
 
 @tool

@@ -37,6 +37,10 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `find_admin_count_accounts` | Users with `adminCount=1` (current or stale protected-admin marker) |
 | `find_must_change_password` | Enabled users who must change their password at next logon (`pwdLastSet=0`) |
 | `find_users_without_email` | Data-quality check: users with no `mail` attribute set |
+| `find_almost_locked_out` | Enabled users close to the lockout threshold (`badPwdCount`) |
+| `find_credentials_in_description` | Risk: users whose description may contain a plaintext credential |
+| `find_shadow_credentials` | Risk: users/computers with a `msDS-KeyCredentialLink` (Shadow Credentials) |
+| `find_obsolete_os_computers` | Computers running a commonly-cited end-of-life Windows version |
 | `audit_admin_accounts` | Members of well-known privileged groups (admin-account audit) |
 | `list_fsmo_roles` | Owners of the five FSMO roles (schema, domain-naming, PDC, RID, infrastructure) |
 | `list_trusts` | Domain trust relationships (`trustedDomain` objects) |
@@ -46,6 +50,7 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `list_empty_groups` | Groups with no direct members (hygiene/audit) |
 | `find_security_groups` | List security-enabled groups, optionally by `scope` (global/domain_local/universal) |
 | `find_distribution_groups` | List distribution groups (complement of `find_security_groups`) |
+| `find_admin_count_groups` | Groups with `adminCount=1` (current or stale protected-group marker) |
 | `list_gpos` | Group Policy Objects (`groupPolicyContainer`) |
 | `get_gpo` | A single GPO by its `cn` (GUID) or `displayName` |
 | `list_fine_grained_password_policies` | Fine-grained password policies (PSOs) |
