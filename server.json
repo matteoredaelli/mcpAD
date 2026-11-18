@@ -1,9 +1,12 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.matteoredaelli/mcpad",
-  "title": "mcpAD",
-  "description": "Read-only Active Directory / LDAP: users, groups, memberships and security audits.",
-  "repository": { "url": "https://github.com/matteoredaelli/mcpAD", "source": "github" },
+  "name": "io.github.matteoredaelli/active-directory-ldap-mcp",
+  "title": "Active Directory / LDAP",
+  "description": "Active Directory / LDAP MCP server: find users, groups, memberships; read-only security audits.",
+  "repository": {
+    "url": "https://github.com/matteoredaelli/mcpAD",
+    "source": "github"
+  },
   "version": "0.8.2",
   "packages": [
     {
@@ -11,14 +14,47 @@
       "identifier": "mcpad",
       "version": "0.8.2",
       "runtimeHint": "uvx",
-      "transport": { "type": "stdio" },
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
-        { "name": "MSAD_DOMAIN", "description": "Default AD domain (section of ~/.msad.toml) when a tool call omits it", "isRequired": false, "format": "string" },
-        { "name": "MSAD_HOST", "description": "Domain controller host (alternative to ~/.msad.toml)", "isRequired": false, "format": "string" },
-        { "name": "MSAD_BASE", "description": "LDAP base DN, e.g. dc=example,dc=com", "isRequired": false, "format": "string" },
-        { "name": "MSAD_USER", "description": "Bind user (user/password auth)", "isRequired": false, "format": "string" },
-        { "name": "MSAD_PASSWORD", "description": "Bind password (user/password auth)", "isRequired": false, "format": "string", "isSecret": true },
-        { "name": "MCPAD_ALLOW_WRITE", "description": "Set truthy to enable group-membership write tools (default: read-only)", "isRequired": false, "format": "string" }
+        {
+          "name": "MSAD_DOMAIN",
+          "description": "Default AD domain (section of ~/.msad.toml) when a tool call omits it",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "MSAD_HOST",
+          "description": "Domain controller host (alternative to ~/.msad.toml)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "MSAD_BASE",
+          "description": "LDAP base DN, e.g. dc=example,dc=com",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "MSAD_USER",
+          "description": "Bind user (user/password auth)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "MSAD_PASSWORD",
+          "description": "Bind password (user/password auth)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "MCPAD_ALLOW_WRITE",
+          "description": "Set truthy to enable group-membership write tools (default: read-only)",
+          "isRequired": false,
+          "format": "string"
+        }
       ]
     }
   ]

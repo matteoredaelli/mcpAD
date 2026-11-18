@@ -1,6 +1,6 @@
 # mcpAD
 
-<!-- mcp-name: io.github.matteoredaelli/mcpad -->
+<!-- mcp-name: io.github.matteoredaelli/active-directory-ldap-mcp -->
 
 A [FastMCP](https://gofastmcp.com) server that exposes the
 [`msad`](https://github.com/matteoredaelli/msad) Active Directory / LDAP library as MCP tools.
