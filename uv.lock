@@ -743,8 +743,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=4.0.9" },
-    { name = "msad", specifier = ">=0.17.1" },
-    { name = "msad", extras = ["kerberos"], marker = "extra == 'kerberos'", specifier = ">=0.17.1" },
+    { name = "msad", specifier = ">=0.18.0" },
+    { name = "msad", extras = ["kerberos"], marker = "extra == 'kerberos'", specifier = ">=0.18.0" },
 ]
 provides-extras = ["kerberos"]
 
@@ -774,7 +774,7 @@ wheels = [
 
 [[package]]
 name = "msad"
-version = "0.17.1"
+version = "0.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -783,9 +783,9 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a3/83/bd9edc10edac44eab30f5220e40873a6a6ca509a7020d93558d83c34e95c/msad-0.17.1.tar.gz", hash = "sha256:080f67fd34862b4063737fa23cef5200dfb49463c3d388455b742f8b9a1f7a08", size = 135055, upload-time = "2026-11-19T21:31:50.641Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/e2/ad20bc7bf3b83ee57f0c01230e8aa773f5fe6b79f9735b756628088f11c3/msad-0.18.0.tar.gz", hash = "sha256:80e244527683035f1ecdd4e7a638b7d8952e4b23d0244fc66a0494142a560de5", size = 136386, upload-time = "2026-11-19T21:52:04.361Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/1d/f169d56fb680f8a0c3860533e1f17370fb5aa541e2ffef112f015d2d6e30/msad-0.17.1-py3-none-any.whl", hash = "sha256:08c1ed0ca5d3bb946a7d0b4c36a6af1dc208c70e1057492e7f29bdd84f46ba7b", size = 66650, upload-time = "2026-11-19T21:31:49.562Z" },
+    { url = "https://files.pythonhosted.org/packages/13/96/af93fe8a58eb94c4e534002cc74e09a78fe873b94963ad87bad19ea1375e/msad-0.18.0-py3-none-any.whl", hash = "sha256:4a6b0b5071e42755e3b6a63e9b854c262d118b9f4cf87e883e49fc4043da7f30", size = 67823, upload-time = "2026-11-19T21:52:03.241Z" },
 ]
 
 [package.optional-dependencies]

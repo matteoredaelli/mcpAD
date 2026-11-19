@@ -75,6 +75,7 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `is_locked` | Is an account locked? |
 | `test_connection` | Test AD connectivity and bind (returns ok/target/auth/error) |
 | `whoami` | Identity bound as (RFC 4532 "Who Am I?"); works with Kerberos too |
+| `get_rootdse_info` | rootDSE of the answering DC: naming contexts, functional levels, GC readiness |
 | `health` | Server health check (server name, msad version, connectivity) |
 
 The `find_users`, `find_groups`, `find_computers` and `find_ous` tools accept an

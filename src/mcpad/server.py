@@ -469,6 +469,19 @@ def whoami(domain: str | None = None) -> dict[str, Any]:
 
 
 @tool
+def get_rootdse_info(domain: str | None = None) -> dict[str, Any]:
+    """Read the rootDSE of the domain controller answering this connection.
+
+    Reports which DC you are talking to (`dnsHostName`, `serverName`), the
+    naming contexts, the domain/forest/DC functional levels (with
+    `*Functionality_name` companions), Global Catalog readiness and the
+    supported controls/capabilities. The rootDSE is per-DC, not per-domain.
+    """
+    s = _Session(domain)
+    return _jsonable(msad.get_rootdse_info(s.conn))
+
+
+@tool
 def health(domain: str | None = None) -> dict[str, Any]:
     """Server health check: reports server name, mcpAD/msad version and AD connectivity."""
     result: dict[str, Any] = {
