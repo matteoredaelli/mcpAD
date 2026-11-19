@@ -45,6 +45,9 @@ disabled unless `MCPAD_ALLOW_WRITE` is enabled (see [Write tools](#write-tools))
 | `find_obsolete_os_computers` | Computers running a commonly-cited end-of-life Windows version |
 | `audit_admin_accounts` | Members of well-known privileged groups (admin-account audit) |
 | `list_fsmo_roles` | Owners of the five FSMO roles (schema, domain-naming, PDC, RID, infrastructure) |
+| `list_replication_connections` | AD replication topology (nTDSConnection): source/destination DC, site, KCC-generated |
+| `list_replication_conflicts` | Replication-conflict (`CNF:`) objects |
+| `first_look` | One-call overview: domain, policy, FSMO, DCs, sites, trusts, replication, warnings |
 | `list_trusts` | Domain trust relationships (`trustedDomain` objects) |
 | `list_sites` | Active Directory sites (from the Configuration naming context) |
 | `list_domain_controllers` | Domain controllers (computer accounts flagged `SERVER_TRUST_ACCOUNT`) |

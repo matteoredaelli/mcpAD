@@ -1289,6 +1289,55 @@ def list_servers(
 
 
 @tool
+def list_replication_connections(
+    config_base: str | None = None,
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the AD replication topology: inbound `nTDSConnection` objects (audit).
+
+    Each entry has the decoded `destination_dc`, `site`, `source_dc`,
+    `source_site` and `kcc_generated` (False = manually created), plus
+    `enabledConnection`. This is topology, not live sync status/lag. Pass
+    `config_base` explicitly for a multi-domain forest.
+    """
+    s = _Session(domain)
+    return _present(
+        msad.list_replication_connections(s.conn, s.base, config_base=config_base, limit=limit)
+    )
+
+
+@tool
+def list_replication_conflicts(
+    limit: int = 100,
+    domain: str | None = None,
+) -> list[dict[str, Any]]:
+    """List replication-conflict objects (names containing `\\0ACNF:<guid>`) (audit).
+
+    These appear when two DCs create the same name concurrently and are a
+    sign of replication problems; they should be reviewed and cleaned up.
+    """
+    s = _Session(domain)
+    return _present(msad.list_replication_conflicts(s.conn, s.base, limit=limit))
+
+
+@tool
+def first_look(
+    config_base: str | None = None,
+    domain: str | None = None,
+) -> dict[str, Any]:
+    """One-call overview of the domain/forest (audit).
+
+    Returns domain info, password policy, FSMO owners, domain controllers,
+    sites, trusts, replication connections and conflicts, plus a `summary`
+    (counts and `warnings`) and `errors` for any section that could not be
+    read. Good first call when exploring an unfamiliar domain.
+    """
+    s = _Session(domain)
+    return _jsonable(msad.first_look(s.conn, s.base, config_base=config_base))
+
+
+@tool
 def list_dns_zones(
     zone_base: str | None = None,
     limit: int = 100,
